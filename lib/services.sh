@@ -125,6 +125,8 @@ build_image_service() {
     --platform "${platform}" \
     -f "${df_path}" \
     -t "${image_ref}" \
+    --cache-from "type=registry,ref=${image_ref}-cache" \
+    --cache-to   "type=registry,ref=${image_ref}-cache,mode=max" \
     "${context}"
   msg_ok "Built image: ${image_ref}"
 }
