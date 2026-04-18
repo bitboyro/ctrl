@@ -9,7 +9,9 @@ source "${CTRL_SELF_DIR}/lib/deploy.sh"
 source "${CTRL_SELF_DIR}/lib/remote.sh"
 source "${CTRL_SELF_DIR}/lib/health.sh"
 source "${CTRL_SELF_DIR}/lib/audit.sh"
+
 source "${CTRL_SELF_DIR}/lib/ext.sh"
+source "${CTRL_SELF_DIR}/lib/gitlab.sh"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 run_for_each() {
@@ -126,7 +128,17 @@ load_extensions
 CMD="${1:-}"; shift || true
 CTRL_SVC_ARGS=()
 
-case "${CMD}" in
+
+  # ── GitLab project info ───────────────────────────────────────────────
+  gitlab-project-info)
+    [[ "$#" -ge 1 ]] || fail "Usage: ctrl gitlab-project-info <project-id-or-path>"
+    ctrl_gitlab_project_info "$1"
+    ;;
+
+  # ── GitLab runner deploy ──────────────────────────────────────────────
+  gitlab-runner-deploy)
+    ctrl_gitlab_runner_deploy
+    ;;
 
   # ── list ──────────────────────────────────────────────────────────────────
   list|ls)
