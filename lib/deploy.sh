@@ -77,7 +77,7 @@ _remote_export_block() {
     local img; img="$(ctrl_service_field "${svc}" '.image // ""')"
     local tag; tag="$(ctrl_service_field "${svc}" '.tag // "latest"')"
     [[ -z "${img}" || "${img}" == "null" ]] && continue
-    local upper_name; upper_name="${svc^^}"; upper_name="${upper_name//-/_}"
+    local upper_name; upper_name="$(tr '[:lower:]-' '[:upper:]_' <<< "${svc}")"
     exports+=("export ${upper_name}_IMAGE=$(printf '%q' "${img}") ${upper_name}_TAG=$(printf '%q' "${tag}")")
   done
   [[ "${#exports[@]}" -gt 0 ]] && printf '%s; ' "${exports[@]}" || true
@@ -107,7 +107,7 @@ _remote_dep_services() {
 deploy_services() {
   local -a svcs=("$@")
   local remote_dir="${CTRL_META_REMOTE_DIR}"
-  local exports; exports="$(_remote_export_block "${svcs[@]}")"
+  local exports; exports="$(_remote_export_block "${svcs[@]}")"; exports="${exports%'; '}"
   local compose_svcs; compose_svcs="$(_remote_compose_services "${svcs[@]}" | sed 's/ $//')"
   local dep_svcs; dep_svcs="$(_remote_dep_services "${svcs[@]}" | sed 's/ $//')"
 
@@ -115,8 +115,8 @@ deploy_services() {
 
   local cmd="cd $(printf '%q' "${remote_dir}")"
   [[ -n "${exports}" ]] && cmd+=" && ${exports}"
-  [[ -n "${dep_svcs// }" ]] && cmd+="docker compose up -d ${dep_svcs} && "
-  cmd+="docker compose pull ${compose_svcs} && docker compose up -d --no-deps --force-recreate ${compose_svcs}"
+  [[ -n "${dep_svcs// }" ]] && cmd+=" && docker compose up -d ${dep_svcs}"
+  cmd+=" && docker compose pull ${compose_svcs} && docker compose up -d --no-deps --force-recreate ${compose_svcs}"
 
   msg "[$CTRL_DEPLOY_NAME] Deploying: ${compose_svcs}"
   ctrl_ssh_run "${cmd}"

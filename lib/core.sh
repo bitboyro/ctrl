@@ -107,10 +107,13 @@ load_config() {
   CTRL_META_REMOTE_DIR="$(dirname "${CTRL_META_COMPOSE_PATH}")"
 
   # Load env files listed in meta.env_files (optional)
-  local env_file
+  # Paths are relative to the ctrl.yaml directory
+  local env_file ctrl_base
+  ctrl_base="$(dirname "${CTRL_CONFIG_FILE}")"
   while IFS= read -r env_file; do
     [[ -z "${env_file}" || "${env_file}" == "null" ]] && continue
     env_file="$(_resolve_env_refs "${env_file}")"
+    [[ "${env_file}" != /* ]] && env_file="${ctrl_base}/${env_file}"
     if [[ -f "${env_file}" ]]; then
       msg_verbose "Sourcing env file: ${env_file}"
       set -a; source "${env_file}"; set +a
