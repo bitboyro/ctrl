@@ -88,7 +88,7 @@ Deployment commands:
   rdep         [target] [svc|all]   rel + dep on target
 
 Remote commands:
-  ssh          [cmd]                Interactive SSH or run a command
+  ssh / sr     [target] [cmd]        Interactive SSH or run a remote command
   rs           [svc]                Remote status (docker compose ps)
   rl           <svc> [lines]        Remote logs (--follow to tail)
   insp         <svc>                Show env of running container
@@ -128,6 +128,7 @@ load_extensions
 CMD="${1:-}"; shift || true
 CTRL_SVC_ARGS=()
 
+case "${CMD}" in
 
   # ── GitLab project info ───────────────────────────────────────────────
   gitlab-project-info)
@@ -219,9 +220,13 @@ CTRL_SVC_ARGS=()
     with_journal "sync-deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;
 
-  # ── ssh ───────────────────────────────────────────────────────────────────
-  ssh)
+  # ── ssh / sr ──────────────────────────────────────────────────────────────
+  ssh|sr)
     _resolve_target_and_services "$@"
+    # strip leading '--' option-separator that users sometimes include
+    while [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 && "${CTRL_SVC_ARGS[0]}" == "--" ]]; do
+      CTRL_SVC_ARGS=("${CTRL_SVC_ARGS[@]:1}")
+    done
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       ctrl_ssh_run "${CTRL_SVC_ARGS[*]}"
     else

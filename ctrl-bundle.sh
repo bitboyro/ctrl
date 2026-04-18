@@ -367,6 +367,8 @@ build_image_service() {
     --platform "${platform}" \
     -f "${df_path}" \
     -t "${image_ref}" \
+    --cache-from "type=registry,ref=${image_ref}-cache" \
+    --cache-to   "type=registry,ref=${image_ref}-cache,mode=max" \
     "${context}"
   msg_ok "Built image: ${image_ref}"
 }
@@ -746,6 +748,7 @@ load_extensions() {
 
 
 
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 run_for_each() {
   local action="$1"; shift
@@ -821,7 +824,7 @@ Deployment commands:
   rdep         [target] [svc|all]   rel + dep on target
 
 Remote commands:
-  ssh          [cmd]                Interactive SSH or run a command
+  ssh / sr     [target] [cmd]        Interactive SSH or run a remote command
   rs           [svc]                Remote status (docker compose ps)
   rl           <svc> [lines]        Remote logs (--follow to tail)
   insp         <svc>                Show env of running container
@@ -862,6 +865,17 @@ CMD="${1:-}"; shift || true
 CTRL_SVC_ARGS=()
 
 case "${CMD}" in
+
+  # ── GitLab project info ───────────────────────────────────────────────
+  gitlab-project-info)
+    [[ "$#" -ge 1 ]] || fail "Usage: ctrl gitlab-project-info <project-id-or-path>"
+    ctrl_gitlab_project_info "$1"
+    ;;
+
+  # ── GitLab runner deploy ──────────────────────────────────────────────
+  gitlab-runner-deploy)
+    ctrl_gitlab_runner_deploy
+    ;;
 
   # ── list ──────────────────────────────────────────────────────────────────
   list|ls)
@@ -942,9 +956,13 @@ case "${CMD}" in
     with_journal "sync-deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;
 
-  # ── ssh ───────────────────────────────────────────────────────────────────
-  ssh)
+  # ── ssh / sr ──────────────────────────────────────────────────────────────
+  ssh|sr)
     _resolve_target_and_services "$@"
+    # strip leading '--' option-separator that users sometimes include
+    while [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 && "${CTRL_SVC_ARGS[0]}" == "--" ]]; do
+      CTRL_SVC_ARGS=("${CTRL_SVC_ARGS[@]:1}")
+    done
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       ctrl_ssh_run "${CTRL_SVC_ARGS[*]}"
     else
