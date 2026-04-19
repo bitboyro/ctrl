@@ -18,6 +18,10 @@ meta:
 
 services:                  # required — list of service definitions
   - name: string           # required — unique, lowercase, hyphen-separated
+    kind: string           # default: service | mcp | library
+                           #   service  — regular HTTP/compose service (default)
+                           #   mcp      — MCP server; adds mcp: block below
+                           #   library  — build-only artifact (no deploy, no health)
     description: string    # optional — shown in ctrl list
     image: string          # required — full image name without tag
     tag: string            # default: latest
@@ -31,6 +35,14 @@ services:                  # required — list of service definitions
       context: string      # default: build.dir
       platform: string     # default: linux/amd64
       script: string       # required when tool=shell — path to build script
+    mcp:                   # required when kind=mcp
+      transport: string    # stdio | sse | http
+      command: string      # required when transport=stdio — script/command that starts the server
+      url: string          # required when transport=sse|http — base URL of the MCP server
+      args:                # optional — extra args passed to command (stdio only)
+        - string
+      env:                 # optional — env vars injected into the MCP process (stdio only)
+        KEY: VALUE
     deploy:
       compose_service: string  # default: service name
       depends_on:          # optional — compose services to start before deploy
@@ -40,6 +52,8 @@ services:                  # required — list of service definitions
       port: number         # constructs http://localhost:<port>/actuator/health
     smoke_tests:           # list of script names (from scripts:) to run as smoke tests
       - string
+    scripts:               # list of script names (from scripts:) associated with this service
+      - string             # run via: ctrl run <name>  — broader than smoke_tests
 
 scripts:                   # optional — named runnable scripts
   - name: string           # unique identifier
