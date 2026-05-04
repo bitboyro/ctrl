@@ -47,7 +47,7 @@ run_script() {
 }
 
 list_scripts() {
-  echo "${CTRL_YAML}" | yq '.scripts[] | "\(.name)\t\(.description // "")"' | \
+  echo "${CTRL_YAML}" | yq -r '.scripts[] | .name + "\t" + (.description // "")' | \
     while IFS=$'\t' read -r name desc; do
       printf '  %-24s %s\n' "${name}" "${desc}"
     done

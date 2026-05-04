@@ -3,6 +3,11 @@
 All notable changes to ctrl will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- `ctrl scripts`, `ctrl sc`, and `ctrl script list` no longer fail on newer `yq` releases; script listing now uses a compatible expression format.
+
 ## [0.0.1] - 2026-05-04
 
 ### Added
