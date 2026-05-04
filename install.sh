@@ -2,7 +2,7 @@
 # ctrl installer — downloads ctrl and registers the Claude skill
 set -euo pipefail
 
-CTRL_VERSION_TAG="${CTRL_VERSION_TAG:-0.1}"
+CTRL_VERSION_TAG="${CTRL_VERSION_TAG:-0.0.1}"
 CTRL_REPO="${CTRL_REPO:-https://github.com/bitboyro/ctrl}"
 CTRL_INSTALL_DIR="${HOME}/.local/share/ctrl/${CTRL_VERSION_TAG}"
 CTRL_BIN_DIR="${HOME}/.local/bin"
@@ -44,11 +44,17 @@ _download "lib/remote.sh"                   "${CTRL_INSTALL_DIR}/lib/remote.sh"
 _download "lib/health.sh"                   "${CTRL_INSTALL_DIR}/lib/health.sh"
 _download "lib/audit.sh"                    "${CTRL_INSTALL_DIR}/lib/audit.sh"
 _download "lib/ext.sh"                      "${CTRL_INSTALL_DIR}/lib/ext.sh"
+_download "lib/gitlab.sh"                   "${CTRL_INSTALL_DIR}/lib/gitlab.sh"
+_download "lib/templates.sh"               "${CTRL_INSTALL_DIR}/lib/templates.sh"
+_download "lib/init.sh"                     "${CTRL_INSTALL_DIR}/lib/init.sh"
+_download "lib/check.sh"                    "${CTRL_INSTALL_DIR}/lib/check.sh"
+_download "lib/info.sh"                     "${CTRL_INSTALL_DIR}/lib/info.sh"
+_download "lib/mcp.sh"                      "${CTRL_INSTALL_DIR}/lib/mcp.sh"
 _download "schema/ctrl.schema.yaml"         "${CTRL_INSTALL_DIR}/schema/ctrl.schema.yaml"
 _download "SKILL.md"                        "${CTRL_INSTALL_DIR}/SKILL.md"
 _download "agents/milli.prompt.md"          "${CTRL_INSTALL_DIR}/agents/milli.prompt.md"
 _download "agents/seb.prompt.md"            "${CTRL_INSTALL_DIR}/agents/seb.prompt.md"
-_download "agents/masamune.prompt.md"       "${CTRL_INSTALL_DIR}/agents/masamune.prompt.md"
+_download "agents/asam.prompt.md"           "${CTRL_INSTALL_DIR}/agents/asam.prompt.md"
 
 chmod +x "${CTRL_INSTALL_DIR}/ctrl.sh"
 
@@ -92,10 +98,10 @@ _register_agents() {
   fi
 
   mkdir -p "${dest_dir}"
-  cp "${agents_src}/milli.prompt.md"    "${dest_dir}/milli.prompt.md"
-  cp "${agents_src}/seb.prompt.md"      "${dest_dir}/seb.prompt.md"
-  cp "${agents_src}/masamune.prompt.md" "${dest_dir}/masamune.prompt.md"
-  _ok "Copilot agents registered: ${dest_dir}/{milli,seb,masamune}.prompt.md"
+  cp "${agents_src}/milli.prompt.md" "${dest_dir}/milli.prompt.md"
+  cp "${agents_src}/seb.prompt.md"   "${dest_dir}/seb.prompt.md"
+  cp "${agents_src}/asam.prompt.md"  "${dest_dir}/asam.prompt.md"
+  _ok "Copilot agents registered: ${dest_dir}/{milli,seb,asam}.prompt.md"
 }
 _register_agents
 
@@ -106,50 +112,47 @@ _generate_example() {
   cat >"${dest}" <<'YAML'
 # ctrl.yaml — platform operations configuration
 # Reference: https://github.com/bitboyro/ctrl
-# Run 'ctrl help' after filling in your values.
-# Rename this file to ctrl.yaml (secrets stay in .local/ctrl.local.yaml).
+# Rename this file to ctrl.yaml. Secrets stay in .local/ctrl.local.yaml (gitignored).
+# Run 'ctrl check' after filling in your values.
 
 ctrl:
-  version: "0.1"          # minimum ctrl version required by this config
+  version: "0.0.1"
 
 meta:
-  project: my-platform    # human-readable project name (used in audit log)
-  registry: docker.io/myorg  # image registry prefix
-  ssh_host: "${VM_HOST}"  # VM hostname or IP — resolved from env at runtime
-  ssh_user: root          # SSH username
-  ssh_port: "22"          # SSH port (default 22)
-  # ssh_key: ~/.ssh/id_ed25519   # optional: path to private key
-  compose_path: /opt/scaffold/docker-compose.yml  # path to docker-compose.yml on VM
-  env_files:              # optional env files to source before running commands
-    - .env                # non-secret config (checked in)
-    # - .local/secret.env # secret overrides (gitignored)
+  project: my-platform
+  registry: docker.io/myorg
+  env_files:
+    - .env
+    # - .local/secret.env
+
+machines:
+  default: prod-vm
+  hosts:
+    - name: prod-vm
+      host: "${VM_HOST}"   # resolved from env at runtime — never hardcode
+      user: root
+      port: 22
+      # key: "${SSH_KEY}"  # optional path to private key
 
 services:
-  # Each service maps to a buildable + deployable unit.
-  - name: my-api          # unique identifier used in ctrl commands
+  - name: my-api
     description: "Backend API service"
-    image: docker.io/myorg/my-api   # full image name (no tag)
-    tag: latest           # image tag; override per-service or in ctrl.local.yaml
+    image: docker.io/myorg/my-api
+    tag: latest
     build:
-      tool: maven         # maven | gradle | npm | make | shell | skip
-      dir: ../my-api      # path to source dir (relative to ctrl.yaml)
-      # args: "-pl my-module -am"  # extra args appended to the build command
-      # prerequisites:    # build these first (relative dirs, must have mvnw/pom.xml)
+      tool: maven          # maven | gradle | npm | make | shell | skip
+      dir: ../my-api
+      # args: "-pl my-module -am"
+      # prerequisites:
       #   - ../shared-lib
-      # dockerfile: Dockerfile           # relative to build.dir (default: Dockerfile)
-      # context: .                       # docker build context (default: build.dir)
-      # platform: linux/amd64            # target platform for buildx
     deploy:
-      compose_service: my-api   # service name in docker-compose.yml
-      # depends_on:       # start these compose services before deploying this one
+      compose_service: my-api
+      # depends_on:
       #   - postgres
-      #   - kafka
     health:
-      # url: https://api.example.com/actuator/health   # full URL (highest priority)
-      port: 8080          # local port; ctrl constructs http://localhost:<port>/actuator/health
+      port: 8080           # or: url: https://...
     smoke_tests:
-      - smoke-api         # names of scripts (see scripts: below) to run as smoke tests
-    # tag and image can be overridden in .local/ctrl.local.yaml per environment
+      - smoke-api
 
   - name: my-web
     description: "Frontend (Next.js)"
@@ -161,28 +164,35 @@ services:
     deploy:
       compose_service: my-web
 
-# Named scripts — run with: ctrl run <name>
-# Scripts receive CTRL_PROJECT, CTRL_SSH_HOST, CTRL_REGISTRY, CTRL_REMOTE_DIR as env vars.
+  # External service — third-party image, no build/push
+  # - name: grafana
+  #   kind: external
+  #   image: grafana/grafana
+  #   tag: "10.2.0"
+  #   deploy:
+  #     compose_service: grafana
+  #   health:
+  #     port: 3000
+
 scripts:
   - name: smoke-api
     path: scripts/smoke-api.sh
     description: "Quick API smoke test after deploy"
-  # - name: seed-db
-  #   path: scripts/seed-db.sh
-  #   description: "Seed local postgres with fixture data"
 
-# Files/directories to copy to the VM during sync-scaffold
-sync:
-  paths:
-    - scaffold/docker-compose.yml
-    - scaffold/traefik
-    - scaffold/prometheus
-    - scaffold/.env        # non-secret env (omit secret.env from sync)
+deployments:
+  default: prod
+  targets:
+    - name: prod
+      machine: prod-vm
+      compose_path: /opt/scaffold/docker-compose.yml
+      sync:
+        paths:
+          - scaffold/docker-compose.yml
+          - scaffold/traefik
+          - scaffold/prometheus
+          - scaffold/.env
 
-# Optional extension scripts sourced at startup.
-# They can define new subcommands as: ctrl_cmd_<name>() { ... }
 extensions: []
-  # - ext/my-custom-commands.sh
 YAML
   _ok "Example config written: ${dest}"
 }

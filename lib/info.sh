@@ -26,9 +26,16 @@ _ctrl_info_project() {
     local deployments_count; deployments_count="$(echo "${CTRL_YAML}" | yq '.deployments.targets | length // 0')"
     local scripts_count; scripts_count="$(echo "${CTRL_YAML}" | yq '.scripts | length // 0')"
     local f33d_url; f33d_url="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.f33d.url // ""')")"
-    printf '{"project":"%s","registry":"%s","version":"%s","machines":%s,"services":%s,"deployments":%s,"scripts":%s,"f33d_url":"%s"}\n' \
-      "${CTRL_META_PROJECT}" "${CTRL_META_REGISTRY}" "${CTRL_VERSION}" \
-      "${machines_count}" "${services_count}" "${deployments_count}" "${scripts_count}" "${f33d_url}"
+    jq -n \
+      --arg project     "${CTRL_META_PROJECT}" \
+      --arg registry    "${CTRL_META_REGISTRY}" \
+      --arg version     "${CTRL_VERSION}" \
+      --argjson machines     "${machines_count}" \
+      --argjson services     "${services_count}" \
+      --argjson deployments  "${deployments_count}" \
+      --argjson scripts      "${scripts_count}" \
+      --arg f33d_url    "${f33d_url}" \
+      '{project:$project,registry:$registry,version:$version,machines:$machines,services:$services,deployments:$deployments,scripts:$scripts,f33d_url:$f33d_url}'
     return
   fi
 
@@ -67,8 +74,13 @@ _ctrl_info_machine() {
   local dep_count; dep_count="$(echo "${CTRL_YAML}" | yq "[.deployments.targets[] | select(.machine == \"${name}\")] | length" 2>/dev/null || echo "0")"
 
   if [[ "${CTRL_JSON}" == "1" ]]; then
-    printf '{"name":"%s","host":"%s","user":"%s","port":"%s","deployments":%s}\n' \
-      "${name}" "${host}" "${user}" "${port}" "${dep_count}"
+    jq -n \
+      --arg name "${name}" \
+      --arg host "${host}" \
+      --arg user "${user}" \
+      --arg port "${port}" \
+      --argjson deployments "${dep_count}" \
+      '{name:$name,host:$host,user:$user,port:$port,deployments:$deployments}'
     return
   fi
 
@@ -93,9 +105,15 @@ _ctrl_info_service() {
   local health_url; health_url="$(ctrl_service_field "${svc}" '.health.url // ""')"
 
   if [[ "${CTRL_JSON}" == "1" ]]; then
-    require_cmd jq
-    printf '{"name":"%s","kind":"%s","image":"%s","tag":"%s","description":"%s","build_tool":"%s","build_dir":"%s"}\n' \
-      "${svc}" "${kind}" "${image}" "${tag}" "${desc}" "${build_tool}" "${build_dir}" | jq .
+    jq -n \
+      --arg name        "${svc}" \
+      --arg kind        "${kind}" \
+      --arg image       "${image}" \
+      --arg tag         "${tag}" \
+      --arg description "${desc}" \
+      --arg build_tool  "${build_tool}" \
+      --arg build_dir   "${build_dir}" \
+      '{name:$name,kind:$kind,image:$image,tag:$tag,description:$description,build_tool:$build_tool,build_dir:$build_dir}'
     return
   fi
 
@@ -126,7 +144,7 @@ ctrl_list_machines() {
       local mhost; mhost="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${mname}\") | .host // \"\"")")"
       local muser; muser="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${mname}\") | .user // \"root\"")")"
       local dep_count; dep_count="$(echo "${CTRL_YAML}" | yq "[.deployments.targets[] | select(.machine == \"${mname}\")] | length" 2>/dev/null || echo "0")"
-      rows+=("{\"name\":\"${mname}\",\"host\":\"${mhost}\",\"user\":\"${muser}\",\"deployments\":${dep_count}}")
+      rows+=("$(jq -n --arg name "${mname}" --arg host "${mhost}" --arg user "${muser}" --argjson deployments "${dep_count}" '{name:$name,host:$host,user:$user,deployments:$deployments}')")
     done < <(echo "${CTRL_YAML}" | yq '.machines.hosts[].name // ""' 2>/dev/null || true)
     printf '[%s]\n' "$(IFS=,; echo "${rows[*]+"${rows[*]}"}")"
     return

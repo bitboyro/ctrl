@@ -122,7 +122,7 @@ ctrl_list_json() {
     local img; img="$(ctrl_service_field "${svc}" '.image // ""')"
     local tag; tag="$(ctrl_service_field "${svc}" '.tag // "latest"')"
     local desc; desc="$(ctrl_service_field "${svc}" '.description // ""')"
-    rows+=("{\"name\":\"${svc}\",\"kind\":\"${kind}\",\"image\":\"${img}\",\"tag\":\"${tag}\",\"description\":\"${desc}\"}")
+    rows+=("$(jq -n --arg name "${svc}" --arg kind "${kind}" --arg image "${img}" --arg tag "${tag}" --arg description "${desc}" '{name:$name,kind:$kind,image:$image,tag:$tag,description:$description}')")
   done < <(ctrl_service_names)
   printf '[%s]\n' "$(IFS=,; echo "${rows[*]+"${rows[*]}"}")"
 }
