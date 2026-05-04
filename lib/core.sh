@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# core.sh — config loading, logging, OS detection, utility helpers
+# core.sh — config loading, logging, utility helpers, machine resolver
 
 CTRL_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]}")/../VERSION" 2>/dev/null || echo "unknown")"
 CTRL_JOURNAL_DIR="${HOME}/.local/share/ctrl"
 CTRL_JOURNAL="${CTRL_JOURNAL_DIR}/journal.jsonl"
 CTRL_DRY_RUN="${CTRL_DRY_RUN:-0}"
 CTRL_VERBOSE="${CTRL_VERBOSE:-0}"
+CTRL_JSON="${CTRL_JSON:-0}"
 
 # ── colour ────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -17,17 +18,19 @@ else
 fi
 
 # ── logging ───────────────────────────────────────────────────────────────────
-msg()       { echo "${BLUE}${BOLD}==>${RESET} $*"; }
-msg_ok()    { echo "${GREEN}${BOLD}ok${RESET} $*"; }
-msg_warn()  { echo "${YELLOW}${BOLD}warn${RESET} $*" >&2; }
-msg_error() { echo "${RED}${BOLD}error${RESET} $*" >&2; }
+msg()         { echo "${BLUE}${BOLD}==>${RESET} $*"; }
+msg_ok()      { echo "${GREEN}${BOLD}ok${RESET} $*"; }
+msg_warn()    { echo "${YELLOW}${BOLD}warn${RESET} $*" >&2; }
+msg_error()   { echo "${RED}${BOLD}error${RESET} $*" >&2; }
 msg_verbose() { [[ "${CTRL_VERBOSE}" == "1" ]] && echo "${DIM}[verbose]${RESET} $*" >&2 || true; }
 
 fail() { msg_error "$*"; exit 1; }
 
 require_cmd() {
   for cmd in "$@"; do
-    command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: ${cmd}"
+    command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: ${cmd}
+Install hint: brew install ${cmd}  # macOS
+              apt-get install ${cmd}  # Debian/Ubuntu"
   done
 }
 
@@ -49,12 +52,14 @@ run_op() {
 CTRL_CONFIG_FILE="${CTRL_CONFIG:-}"
 CTRL_META_PROJECT=""
 CTRL_META_REGISTRY=""
+# Active SSH connection — set by resolve_machine() or resolve_deployment()
 CTRL_META_SSH_HOST=""
 CTRL_META_SSH_USER="root"
 CTRL_META_SSH_PORT="22"
 CTRL_META_SSH_KEY=""
 CTRL_META_COMPOSE_PATH="/opt/scaffold/docker-compose.yml"
 CTRL_META_REMOTE_DIR="/opt/scaffold"
+CTRL_MACHINE_NAME=""
 
 _find_config() {
   if [[ -n "${CTRL_CONFIG_FILE}" ]]; then
@@ -69,29 +74,23 @@ _find_config() {
     fi
     dir="$(dirname "${dir}")"
   done
-  fail "No ctrl.yaml found. Run 'ctrl init' or create one manually."
+  fail "No ctrl.yaml found. Run 'ctrl init' to create one."
 }
 
-_require_yq() {
-  require_cmd yq
-}
+_require_yq() { require_cmd yq; }
 
 # Resolve ${VAR} references in a string using current env
-_resolve_env_refs() {
-  echo "$1" | envsubst
-}
+_resolve_env_refs() { echo "$1" | envsubst; }
 
 load_config() {
   _find_config
   _require_yq
   msg_verbose "Loading config: ${CTRL_CONFIG_FILE}"
 
-  # Load .local/ctrl.local.yaml overrides if present
   local local_cfg
   local_cfg="$(dirname "${CTRL_CONFIG_FILE}")/.local/ctrl.local.yaml"
   if [[ -f "${local_cfg}" ]]; then
     msg_verbose "Merging local overrides: ${local_cfg}"
-    # yq merge: local overrides base (yq >=4 syntax)
     CTRL_YAML="$(yq '. *= load("'"${local_cfg}"'")' "${CTRL_CONFIG_FILE}")"
   else
     CTRL_YAML="$(cat "${CTRL_CONFIG_FILE}")"
@@ -99,15 +98,7 @@ load_config() {
 
   CTRL_META_PROJECT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.project // ""')")"
   CTRL_META_REGISTRY="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.registry // ""')")"
-  CTRL_META_SSH_HOST="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.ssh_host // ""')")"
-  CTRL_META_SSH_USER="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.ssh_user // "root"')")"
-  CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.ssh_port // "22"')")"
-  CTRL_META_SSH_KEY="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.ssh_key // ""')")"
-  CTRL_META_COMPOSE_PATH="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.compose_path // "/opt/scaffold/docker-compose.yml"')")"
-  CTRL_META_REMOTE_DIR="$(dirname "${CTRL_META_COMPOSE_PATH}")"
 
-  # Load env files listed in meta.env_files (optional)
-  # Paths are relative to the ctrl.yaml directory
   local env_file ctrl_base
   ctrl_base="$(dirname "${CTRL_CONFIG_FILE}")"
   while IFS= read -r env_file; do
@@ -121,7 +112,46 @@ load_config() {
   done < <(echo "${CTRL_YAML}" | yq '.meta.env_files[]? // ""')
 }
 
-# ── service accessors (read from CTRL_YAML) ───────────────────────────────────
+# ── machine resolver ──────────────────────────────────────────────────────────
+# Sets CTRL_META_SSH_* from machines.hosts[] entry.
+# Call before any SSH operation.
+
+resolve_machine() {
+  local name="${1:-}"
+
+  # env var override takes highest priority
+  [[ -n "${CTRL_MACHINE:-}" ]] && name="${CTRL_MACHINE}"
+
+  if [[ -z "${name}" ]]; then
+    name="$(echo "${CTRL_YAML}" | yq '.machines.default // ""')"
+    [[ -n "${name}" && "${name}" != "null" ]] || \
+      fail "No machine specified and machines.default not set in ctrl.yaml"
+  fi
+
+  local found; found="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .name" 2>/dev/null || true)"
+  [[ -n "${found}" && "${found}" != "null" ]] || \
+    fail "Machine '${name}' not found in ctrl.yaml machines.hosts"
+
+  CTRL_META_SSH_HOST="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .host // \"\"")")"
+  CTRL_META_SSH_USER="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .user // \"root\"")")"
+  CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .port // \"22\"")")"
+  CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .key // \"\"")")"
+  CTRL_MACHINE_NAME="${name}"
+
+  [[ -n "${CTRL_META_SSH_HOST}" && "${CTRL_META_SSH_HOST}" != "null" ]] || \
+    fail "Machine '${name}' has no host defined"
+
+  msg_verbose "Machine: ${name} → ${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}:${CTRL_META_SSH_PORT}"
+}
+
+is_machine() {
+  local candidate="${1:-}"
+  [[ -z "${candidate}" ]] && return 1
+  local found; found="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${candidate}\") | .name" 2>/dev/null || true)"
+  [[ -n "${found}" && "${found}" != "null" ]]
+}
+
+# ── service accessors ─────────────────────────────────────────────────────────
 
 ctrl_service_names() {
   echo "${CTRL_YAML}" | yq '.services[].name'
@@ -137,6 +167,11 @@ ctrl_service_exists() {
   local found
   found="$(echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]]
+}
+
+ctrl_service_kind() {
+  local svc="$1"
+  ctrl_service_field "${svc}" '.kind // "service"'
 }
 
 ctrl_resolve_services() {
@@ -164,7 +199,8 @@ ctrl_resolve_services() {
 # ── SSH helpers ───────────────────────────────────────────────────────────────
 
 _ssh_target() {
-  [[ -n "${CTRL_META_SSH_HOST}" ]] || fail "meta.ssh_host is not set in ctrl.yaml"
+  [[ -n "${CTRL_META_SSH_HOST}" ]] || \
+    fail "No SSH host set. Run a command that resolves a machine or deployment first."
   printf '%s@%s' "${CTRL_META_SSH_USER}" "${CTRL_META_SSH_HOST}"
 }
 
@@ -189,8 +225,6 @@ ctrl_ssh_run() {
 ctrl_scp_send() {
   local src="$1" dst="$2"
   local target; target="$(_ssh_target)"
-  local -a flags=() # scp uses -P, but we build scp_flags below directly
-  # rebuild properly
   local port="${CTRL_META_SSH_PORT}"
   local -a scp_flags=(-P "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && scp_flags+=(-i "${CTRL_META_SSH_KEY}")
@@ -219,7 +253,6 @@ journal_entry() {
     >> "${CTRL_JOURNAL}"
 }
 
-# Wrap a block and record it; usage: with_journal "cmd" "svc1 svc2" <function> [args]
 with_journal() {
   local cmd="$1" svcs="$2"; shift 2
   local start; start="$(date +%s)"

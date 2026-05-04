@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# remote.sh — ssh, remote-status, remote-logs, inspect
+# remote.sh — ssh, remote-status, remote-logs, env (container environment)
 
 open_ssh() {
   local remote_dir="${CTRL_META_REMOTE_DIR}"
@@ -41,7 +41,7 @@ remote_logs() {
   ctrl_ssh_run "cd $(printf '%q' "${remote_dir}") && docker compose logs ${tail_flag} ${follow_flag} ${cs}"
 }
 
-remote_inspect() {
+remote_env() {
   local svc="$1"
   ctrl_service_exists "${svc}" || fail "Unknown service: ${svc}"
   local cs; cs="$(_svc_compose_service "${svc}")"

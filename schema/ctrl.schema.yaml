@@ -1,77 +1,91 @@
-# ctrl.yaml schema reference
-# This is a human-readable spec, not a machine-enforced JSON Schema.
-# Future: can be converted to JSON Schema for linting.
+# ctrl.yaml schema reference — v0.0.1
+# Human-readable spec. All fields listed with types and defaults.
 
 ctrl:
-  version: string          # required — minimum ctrl version (e.g. "0.1")
+  version: string          # required — minimum ctrl version (e.g. "0.0.1")
 
 meta:
   project: string          # required — project name
-  registry: string         # optional — default image registry prefix
-  ssh_host: string         # required for remote commands — supports ${ENV_VAR}
-  ssh_user: string         # default: root
-  ssh_port: string         # default: "22"
-  ssh_key: string          # optional — path to SSH private key
-  compose_path: string     # default: /opt/scaffold/docker-compose.yml
-  env_files:               # optional list of files to source
-    - string
+  registry: string         # optional — default image registry prefix (e.g. docker.io/myorg)
+  env_files:               # optional — sourced before any command runs
+    - string               # path relative to ctrl.yaml
+  f33d:
+    url: string            # notification feed URL
+    token: string          # use "${ENV_VAR}" — never hardcode
+
+machines:                  # optional — SSH hosts
+  default: string          # name of default machine (for ssh / rs / rl / env commands)
+  hosts:
+    - name: string         # unique identifier
+      host: string         # required — IP/hostname, supports ${ENV_VAR}
+      user: string         # default: root
+      port: string         # default: "22"
+      key: string          # optional — path to SSH private key, supports ${ENV_VAR}
 
 services:                  # required — list of service definitions
   - name: string           # required — unique, lowercase, hyphen-separated
-    kind: string           # default: service | mcp | library
-                           #   service  — regular HTTP/compose service (default)
-                           #   mcp      — MCP server; adds mcp: block below
-                           #   library  — build-only artifact (no deploy, no health)
+    kind: string           # service (default) | mcp | library | external
+                           #   service  — regular deployable service
+                           #   mcp      — MCP server; adds mcp: block
+                           #   library  — build-only (no image/push/deploy/health)
+                           #   external — third-party image (no build/push; deploy+health only)
     description: string    # optional — shown in ctrl list
     image: string          # required — full image name without tag
     tag: string            # default: latest
-    build:
+    build:                 # required unless kind=external
       tool: string         # maven | gradle | npm | make | shell | skip
-      dir: string          # required — path to source (relative to ctrl.yaml)
-      args: string         # optional — extra build arguments
-      prerequisites:       # optional — build these dirs first
+      dir: string          # path to source relative to ctrl.yaml
+      args: string         # optional extra build arguments
+      prerequisites:       # optional — build these dirs first (maven install)
         - string
       dockerfile: string   # default: Dockerfile (relative to build.dir)
       context: string      # default: build.dir
       platform: string     # default: linux/amd64
-      script: string       # required when tool=shell — path to build script
+      script: string       # required when tool=shell
     mcp:                   # required when kind=mcp
       transport: string    # stdio | sse | http
-      command: string      # required when transport=stdio — script/command that starts the server
-      url: string          # required when transport=sse|http — base URL of the MCP server
-      args:                # optional — extra args passed to command (stdio only)
+      command: string      # required when transport=stdio
+      url: string          # required when transport=sse|http
+      args:
         - string
-      env:                 # optional — env vars injected into the MCP process (stdio only)
+      env:
         KEY: VALUE
     deploy:
       compose_service: string  # default: service name
-      depends_on:          # optional — compose services to start before deploy
-        - string
+      depends_on:
+        - string           # compose services to ensure running before deploy
     health:
-      url: string          # full URL takes priority
+      url: string          # full URL (takes priority over port)
       port: number         # constructs http://localhost:<port>/actuator/health
-    smoke_tests:           # list of script names (from scripts:) to run as smoke tests
+    smoke_tests:           # script names from scripts: to run as smoke tests
       - string
-    scripts:               # list of script names (from scripts:) associated with this service
-      - string             # run via: ctrl run <name>  — broader than smoke_tests
+    scripts:               # all script names associated with this service
+      - string
 
 scripts:                   # optional — named runnable scripts
   - name: string           # unique identifier
-    path: string           # path to script (relative to ctrl.yaml)
-    description: string    # optional
+    path: string           # path to script relative to ctrl.yaml
+    description: string    # optional — shown in ctrl sc
+    hooks:
+      pre:                 # scripts to run before this script
+        - string
+      post:                # scripts to run after this script (always runs)
+        - string
 
-deployments:               # required for sync / dep / rdep commands
-  default: string          # name of the default target (used when target omitted)
+deployments:               # required for sync / dep / rdep / diff / hc commands
+  default: string          # name of the default deployment target
   targets:
     - name: string         # unique target name (e.g. prod, staging)
-      ssh_host: string     # overrides meta.ssh_host for this target
-      ssh_user: string     # overrides meta.ssh_user
-      ssh_port: string     # overrides meta.ssh_port
-      ssh_key: string      # overrides meta.ssh_key
-      compose_path: string # path to docker-compose.yml on this target's VM
+      machine: string      # references machines.hosts[].name
+      compose_path: string # path to docker-compose.yml on the remote VM
+      # inline SSH overrides (optional, backwards compat or when no machines: block)
+      ssh_host: string
+      ssh_user: string
+      ssh_port: string
+      ssh_key: string
       sync:
         paths:
           - string         # files/dirs to rsync (relative to ctrl.yaml)
 
 extensions:                # optional — sourced at startup, can define ctrl_cmd_<name>()
-  - string                 # path to extension script (relative to ctrl.yaml)
+  - string                 # path to extension script relative to ctrl.yaml

@@ -22,13 +22,26 @@ _svc_abs_dir() {
   local svc="$1"
   local dir; dir="$(_svc_build_dir "${svc}")"
   [[ -n "${dir}" ]] || fail "Service '${svc}' has no build.dir defined"
-  # resolve relative to ctrl.yaml location
   local base; base="$(dirname "${CTRL_CONFIG_FILE}")"
   if [[ "${dir}" == /* ]]; then printf '%s' "${dir}"; else printf '%s/%s' "${base}" "${dir}"; fi
 }
 
+# Guard: fail if service kind does not support the requested operation
+_assert_kind_allows() {
+  local svc="$1" op="$2"
+  local kind; kind="$(ctrl_service_kind "${svc}")"
+  case "${op}" in
+    build)
+      [[ "${kind}" != "external" ]] || fail "Service '${svc}' is kind: external — build is not applicable"
+      ;;
+    image|push)
+      [[ "${kind}" != "external" ]] || fail "Service '${svc}' is kind: external — ${op} is not applicable"
+      [[ "${kind}" != "library"  ]] || fail "Service '${svc}' is kind: library — ${op} is not applicable (build only)"
+      ;;
+  esac
+}
+
 # ── sc-core / prerequisite builds ────────────────────────────────────────────
-_SC_CORE_BUILT=0
 
 _build_prerequisites() {
   local svc="$1"
@@ -52,6 +65,7 @@ _build_prerequisites() {
 # ── build code ────────────────────────────────────────────────────────────────
 build_code_service() {
   local svc="$1"
+  _assert_kind_allows "${svc}" build
   local tool; tool="$(_svc_build_tool "${svc}")"
   local dir; dir="$(_svc_abs_dir "${svc}")"
   local extra; extra="$(_svc_build_args "${svc}")"
@@ -98,17 +112,19 @@ DOCKER_LOGGED_IN=0
 _docker_login_once() {
   [[ "${DOCKER_LOGGED_IN}" -eq 0 ]] || return 0
   require_cmd docker
-  local username="${DOCKERHUB_USERNAME:-}"
-  local password="${DOCKERHUB_PASSWORD:-}"
-  [[ -n "${username}" ]] || fail "DOCKERHUB_USERNAME is not set"
-  [[ -n "${password}" ]] || fail "DOCKERHUB_PASSWORD is not set"
-  msg "Logging into registry as ${username}"
-  run_op "docker login" bash -c "printf '%s' '${password}' | docker login --username '${username}' --password-stdin"
+  # Read credentials from env — never interpolate secrets into bash -c strings
+  export CTRL_DOCKER_USER="${DOCKERHUB_USERNAME:-}"
+  export CTRL_DOCKER_PASS="${DOCKERHUB_PASSWORD:-}"
+  [[ -n "${CTRL_DOCKER_USER}" ]] || fail "DOCKERHUB_USERNAME is not set"
+  [[ -n "${CTRL_DOCKER_PASS}" ]] || fail "DOCKERHUB_PASSWORD is not set"
+  msg "Logging into registry as ${CTRL_DOCKER_USER}"
+  run_op "docker login" bash -c 'printf "%s" "${CTRL_DOCKER_PASS}" | docker login --username "${CTRL_DOCKER_USER}" --password-stdin'
   DOCKER_LOGGED_IN=1
 }
 
 build_image_service() {
   local svc="$1"
+  _assert_kind_allows "${svc}" image
   local image_ref; image_ref="$(_svc_image_ref "${svc}")"
   local platform; platform="$(_svc_platform "${svc}")"
 
@@ -133,6 +149,7 @@ build_image_service() {
 
 push_image_service() {
   local svc="$1"
+  _assert_kind_allows "${svc}" push
   local image_ref; image_ref="$(_svc_image_ref "${svc}")"
   _docker_login_once
   msg "Pushing ${image_ref}"
@@ -142,7 +159,16 @@ push_image_service() {
 
 release_service() {
   local svc="$1"
-  build_code_service "${svc}"
-  build_image_service "${svc}"
-  push_image_service "${svc}"
+  local kind; kind="$(ctrl_service_kind "${svc}")"
+  case "${kind}" in
+    external)
+      fail "Service '${svc}' is kind: external — release is not applicable" ;;
+    library)
+      build_code_service "${svc}" ;;
+    *)
+      build_code_service "${svc}"
+      build_image_service "${svc}"
+      push_image_service "${svc}"
+      ;;
+  esac
 }
