@@ -13,6 +13,8 @@ _svc_health_url() {
 health_check_service() {
   local svc="$1"
   ctrl_service_exists "${svc}" || fail "Unknown service: ${svc}"
+  local kind; kind="$(ctrl_service_kind "${svc}")"
+  [[ "${kind}" != "library" ]] || { msg_warn "Service '${svc}' is kind: library — health check is not applicable"; return 0; }
   local url; url="$(_svc_health_url "${svc}")"
   [[ -n "${url}" ]] || { msg_warn "No health.url or health.port for ${svc} — skipping"; return 0; }
   require_cmd curl
@@ -40,6 +42,8 @@ wait_ready_service() {
   local svc="$1"
   local timeout="${2:-60}"
   ctrl_service_exists "${svc}" || fail "Unknown service: ${svc}"
+  local kind; kind="$(ctrl_service_kind "${svc}")"
+  [[ "${kind}" != "library" ]] || { msg_warn "Service '${svc}' is kind: library — wait-ready is not applicable"; return 0; }
   local url; url="$(_svc_health_url "${svc}")"
   [[ -n "${url}" ]] || { msg_warn "No health.url or health.port for ${svc} — skipping"; return 0; }
   require_cmd curl

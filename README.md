@@ -20,7 +20,15 @@ curl -fsSL https://github.com/bitboyro/ctrl/releases/latest/download/ctrl \
 ```
 Then run `ctrl init` — it offers to add `~/.local/bin` to `PATH` automatically.
 
-**Required:** `yq`, `jq`, `curl`, `ssh`. `docker` only needed for build/push/deploy.
+## Dependencies
+
+| Tool | Required | Purpose |
+|------|----------|---------|
+| `yq` | always | YAML parsing |
+| `jq` | always | JSON processing |
+| `curl` | always | health checks, GitLab API, f33d notifications |
+| `ssh` | always | remote access (`ssh`, `rs`, `rl`, `env`) |
+| `docker` | build/push/deploy only | image build, push, and compose operations |
 
 ## Quick start
 
@@ -132,7 +140,7 @@ ctrl env api            # show env vars of running container (shorthand: ctrl e 
 ## Health & smoke tests
 
 ```bash
-ctrl health-check       # health-check all services (shorthand: ctrl hc)
+ctrl health-check       # health-check all health-configured, non-library services (shorthand: ctrl hc)
 ctrl health-check api
 ctrl wait-ready api 60  # poll until healthy, 60s timeout (shorthand: ctrl wr)
 ctrl smoke-test api     # run smoke_tests scripts for a service (shorthand: ctrl st)

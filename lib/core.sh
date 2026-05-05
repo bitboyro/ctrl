@@ -174,6 +174,21 @@ ctrl_service_kind() {
   ctrl_service_field "${svc}" '.kind // "service"'
 }
 
+ctrl_service_has_health() {
+  local svc="$1"
+  local url port
+  url="$(ctrl_service_field "${svc}" '.health.url // ""')"
+  port="$(ctrl_service_field "${svc}" '.health.port // ""')"
+  [[ -n "${url}" && "${url}" != "null" ]] || [[ -n "${port}" && "${port}" != "null" ]]
+}
+
+ctrl_health_target_names() {
+  echo "${CTRL_YAML}" | yq '.services[]
+    | select((.kind // "service") != "library")
+    | select((.health.url // "") != "" or (.health.port // "") != "")
+    | .name'
+}
+
 ctrl_resolve_services() {
   local -a out=()
   local token part normalized
@@ -186,6 +201,28 @@ ctrl_resolve_services() {
       [[ -z "${normalized}" ]] && continue
       if [[ "${normalized}" == "all" ]]; then
         while IFS= read -r s; do out+=("${s}"); done < <(ctrl_service_names)
+        echo "${out[@]}"; return
+      fi
+      ctrl_service_exists "${normalized}" || fail "Unknown service: ${normalized}"
+      out+=("${normalized}")
+    done
+  done
+  [[ "${#out[@]}" -gt 0 ]] || fail "No services resolved"
+  echo "${out[@]}"
+}
+
+ctrl_resolve_health_services() {
+  local -a out=()
+  local token part normalized
+  for token in "$@"; do
+    IFS=',' read -r -a parts <<< "${token}"
+    for part in "${parts[@]}"; do
+      normalized="${part#"${part%%[![:space:]]*}"}"
+      normalized="${normalized%"${normalized##*[![:space:]]}"}"
+      normalized="$(tr '[:upper:]' '[:lower:]' <<< "${normalized}")"
+      [[ -z "${normalized}" ]] && continue
+      if [[ "${normalized}" == "all" ]]; then
+        while IFS= read -r s; do out+=("${s}"); done < <(ctrl_health_target_names)
         echo "${out[@]}"; return
       fi
       ctrl_service_exists "${normalized}" || fail "Unknown service: ${normalized}"

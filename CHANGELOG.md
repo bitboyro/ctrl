@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - `ctrl scripts`, `ctrl sc`, and `ctrl script list` no longer fail on newer `yq` releases; script listing now uses a compatible expression format.
+- `ctrl hc` now skips `kind: library` entries and only expands `all` to services that actually have a configured health target, so SDK modules no longer appear as noisy pseudo-services in health runs.
 
 ## [0.0.1] - 2026-05-04
 

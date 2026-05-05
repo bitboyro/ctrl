@@ -304,9 +304,9 @@ case "${CMD}" in
     resolve_deployment "" 2>/dev/null || true
     svcs=()
     if [[ "$#" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
+      read -r -a svcs <<< "$(ctrl_resolve_health_services "$@")"
     else
-      read -r -a svcs <<< "$(ctrl_resolve_services all)"
+      read -r -a svcs <<< "$(ctrl_health_target_names)"
     fi
     run_for_each_continue health_check_service "${svcs[@]}"
     ;;
