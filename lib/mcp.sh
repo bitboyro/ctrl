@@ -144,22 +144,22 @@ ctrl_mcp_serve() {
     local response
     case "${method}" in
       initialize)
-        response="$(jq -n --argjson id "${id}" '{jsonrpc:"2.0",id:$id,result:{protocolVersion:"2024-11-05",capabilities:{tools:{}},serverInfo:{name:"ctrl",version:"'"${CTRL_VERSION}"'"}}}')"
+        response="$(jq -cn --argjson id "${id}" '{jsonrpc:"2.0",id:$id,result:{protocolVersion:"2024-11-05",capabilities:{tools:{}},serverInfo:{name:"ctrl",version:"'"${CTRL_VERSION}"'"}}}')"
         ;;
       tools/list)
         local tools_json; tools_json="$(_mcp_tools_list)"
-        response="$(jq -n --argjson id "${id}" --argjson t "${tools_json}" '{jsonrpc:"2.0",id:$id,result:$t}')"
+        response="$(jq -cn --argjson id "${id}" --argjson t "${tools_json}" '{jsonrpc:"2.0",id:$id,result:$t}')"
         ;;
       tools/call)
         local tool_name; tool_name="$(echo "${params}" | jq -r '.name // ""')"
         local tool_args; tool_args="$(echo "${params}" | jq -c '.arguments // {}')"
         local result; result="$(_mcp_run_tool "${tool_name}" "${tool_args}" 2>/dev/null || echo '{"error":"tool execution failed"}')"
-        response="$(jq -n --argjson id "${id}" --argjson r "${result}" '{jsonrpc:"2.0",id:$id,result:{content:[{type:"text",text:($r|tostring)}]}}')"
+        response="$(jq -cn --argjson id "${id}" --argjson r "${result}" '{jsonrpc:"2.0",id:$id,result:{content:[{type:"text",text:($r|tostring)}]}}')"
         ;;
       notifications/*)
         continue ;;
       *)
-        response="$(jq -n --argjson id "${id}" '{jsonrpc:"2.0",id:$id,error:{code:-32601,message:"Method not found"}}')"
+        response="$(jq -cn --argjson id "${id}" '{jsonrpc:"2.0",id:$id,error:{code:-32601,message:"Method not found"}}')"
         ;;
     esac
 
