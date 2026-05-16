@@ -105,6 +105,7 @@ load_config() {
   fi
 
   CTRL_META_PROJECT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.project // ""')")"
+  # shellcheck disable=SC2034
   CTRL_META_REGISTRY="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.registry // ""')")"
 
   local env_file ctrl_base
@@ -117,8 +118,10 @@ load_config() {
     [[ "${env_file}" != /* ]] && env_file="${ctrl_base}/${env_file}"
     if [[ -f "${env_file}" ]]; then
       msg_verbose "Sourcing env file: ${env_file}"
+      set -a
       # shellcheck disable=SC1090
-      set -a; source "${env_file}"; set +a
+      source "${env_file}"
+      set +a
       [[ "${env_file}" == "${local_secrets}" ]] && loaded_secrets=1
     fi
   done < <(echo "${CTRL_YAML}" | yq '.meta.env_files[]? // ""')
@@ -126,8 +129,10 @@ load_config() {
   # Implicit .local/secrets.env fallback (loaded if not already loaded above)
   if [[ -z "${loaded_secrets}" && -f "${local_secrets}" ]]; then
     msg_verbose "Sourcing implicit env file: ${local_secrets}"
+    set -a
     # shellcheck disable=SC1090
-    set -a; source "${local_secrets}"; set +a
+    source "${local_secrets}"
+    set +a
   fi
 
   # Prefer project-local .local/journal/ when .local/ exists
@@ -163,6 +168,7 @@ resolve_machine() {
   CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .key // \"\"")")"
   CTRL_META_SSH_PASSWORD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .password // \"\"")")"
   export CTRL_META_SSH_PASSWORD
+  # shellcheck disable=SC2034
   CTRL_MACHINE_NAME="${name}"
 
   [[ -n "${CTRL_META_SSH_HOST}" && "${CTRL_META_SSH_HOST}" != "null" ]] || \

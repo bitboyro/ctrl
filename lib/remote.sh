@@ -6,7 +6,8 @@ open_ssh() {
   local target port
   target="${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}"
   port="${CTRL_META_SSH_PORT}"
-  local cmd="cd $(printf '%q' "${remote_dir}") && exec \${SHELL:-bash} -l"
+  local cmd
+  cmd="cd $(printf '%q' "${remote_dir}") && exec \${SHELL:-bash} -l"
 
   local -a flags=(-t -p "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && flags+=(-i "${CTRL_META_SSH_KEY}")

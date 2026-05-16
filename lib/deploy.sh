@@ -145,7 +145,8 @@ deploy_services() {
 
   [[ -n "${compose_svcs// }" ]] || fail "No compose services resolved for: ${svcs[*]}"
 
-  local cmd="cd $(printf '%q' "${remote_dir}")"
+  local cmd
+  cmd="cd $(printf '%q' "${remote_dir}")"
   [[ -n "${exports}" ]] && cmd+=" && ${exports}"
   [[ -n "${dep_svcs// }" ]] && cmd+=" && docker compose up -d ${dep_svcs}"
   cmd+=" && docker compose pull ${compose_svcs} && docker compose up -d --no-deps --force-recreate ${compose_svcs}"
