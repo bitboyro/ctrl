@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- GitHub Actions test suite (`.github/workflows/test.yml`) with five jobs: ShellCheck lint, unit tests (Ubuntu + macOS matrix), randomized property tests, `dist/ctrl` smoke tests, and SSH integration tests against a `linuxserver/openssh-server` service container. 59 bats-core tests under `tests/` cover Properties 1, 2, 3, 4, 5, 7, 8, and 14 from the design doc, plus MCP JSON-RPC and journal round-trips. Release workflow now requires the test workflow to pass before tagging.
+
 ## [0.1.0] - 2026-05-16
 
 ### Added
