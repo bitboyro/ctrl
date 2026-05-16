@@ -10,8 +10,9 @@ open_ssh() {
   local -a flags=(-t -p "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && flags+=(-i "${CTRL_META_SSH_KEY}")
 
-  if [[ -n "${SSH_PASSWORD:-}" ]] && has_cmd sshpass; then
-    sshpass -p "${SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${cmd}"
+  if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
+    has_cmd sshpass || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    sshpass -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${cmd}"
   else
     ssh "${flags[@]}" "${target}" "${cmd}"
   fi

@@ -21,6 +21,8 @@ run_script() {
   export CTRL_REGISTRY="${CTRL_META_REGISTRY}"
   export CTRL_REMOTE_DIR="${CTRL_META_REMOTE_DIR}"
   export CTRL_CONFIG_FILE
+  export CTRL_MACHINE_NAME="${CTRL_MACHINE_NAME:-}"
+  export CTRL_DEPLOY_NAME="${CTRL_DEPLOY_NAME:-}"
   export F33D_URL; F33D_URL="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.f33d.url // ""')")"
   export F33D_TOKEN; F33D_TOKEN="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq '.meta.f33d.token // ""')")"
 
@@ -47,8 +49,14 @@ run_script() {
 }
 
 list_scripts() {
-  echo "${CTRL_YAML}" | yq -r '.scripts[] | .name + "\t" + (.description // "")' | \
+  local tag="${1:-}"
+  local query='.scripts[]'
+  if [[ -n "${tag}" ]]; then
+    query=".scripts[] | select(.tags // [] | contains([\"${tag}\"]))"
+  fi
+  echo "${CTRL_YAML}" | yq -r "${query} | .name + \"\t\" + (.description // \"\")" | \
     while IFS=$'\t' read -r name desc; do
+      [[ -z "${name}" ]] && continue
       printf '  %-24s %s\n' "${name}" "${desc}"
     done
 }

@@ -8,7 +8,11 @@ ctrl_check() {
 
   # ── required top-level fields ─────────────────────────────────────────────
   local version; version="$(echo "${CTRL_YAML}" | yq '.ctrl.version // ""')"
-  [[ -n "${version}" && "${version}" != "null" ]] || errors+=("ctrl.version is missing")
+  if [[ -z "${version}" || "${version}" == "null" ]]; then
+    errors+=("ctrl.version is missing")
+  elif [[ "${version}" != "${CTRL_VERSION}" ]]; then
+    warnings+=("Version mismatch: ctrl.yaml declares v${version} but running v${CTRL_VERSION}")
+  fi
 
   local project; project="$(echo "${CTRL_YAML}" | yq '.meta.project // ""')"
   [[ -n "${project}" && "${project}" != "null" ]] || errors+=("meta.project is missing")

@@ -41,7 +41,7 @@ ctrl_init() {
 
   cat > "${config_file}" << YAML
 ctrl:
-  version: "1.0"
+  version: "${CTRL_VERSION}"
 
 meta:
   project: ${project_name}
@@ -73,6 +73,24 @@ extensions: []
 YAML
 
   msg_ok "Created ${config_file}"
+
+  # ── .local/ scaffolding ─────────────────────────────────────────────────────
+  local local_dir="${target_dir}/.local"
+  mkdir -p "${local_dir}"
+  if [[ ! -f "${local_dir}/.gitignore" ]]; then
+    printf '*\n' > "${local_dir}/.gitignore"
+  fi
+  if [[ ! -f "${local_dir}/secrets.env.example" ]]; then
+    cat > "${local_dir}/secrets.env.example" << 'ENV'
+# Local secrets — copy to secrets.env and fill in values.
+# secrets.env is auto-loaded by ctrl if .local/ exists.
+# Reference these in ctrl.yaml using ${VAR} syntax.
+#
+# EXAMPLE_PASSWORD=
+ENV
+  fi
+  msg_ok "Created .local/ (gitignored — secrets.env.example inside)"
+
   echo ""
   echo "Next steps:"
   echo "  1. Add services to ctrl.yaml"

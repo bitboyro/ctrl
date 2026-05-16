@@ -2,17 +2,23 @@
 # ctrl installer — downloads ctrl and registers the Claude skill
 set -euo pipefail
 
-CTRL_VERSION_TAG="${CTRL_VERSION_TAG:-0.0.1}"
+CTRL_VERSION_TAG="${CTRL_VERSION_TAG:-}"
 CTRL_REPO="${CTRL_REPO:-https://github.com/bitboyro/ctrl}"
-CTRL_INSTALL_DIR="${HOME}/.local/share/ctrl/${CTRL_VERSION_TAG}"
 CTRL_BIN_DIR="${HOME}/.local/bin"
 CTRL_INIT="${CTRL_INIT:-0}"  # set to 1 (or pass --init) to generate ctrl.yaml
+CTRL_REF="main"              # git ref to download from
 
 for arg in "$@"; do
   case "${arg}" in
     --init) CTRL_INIT=1 ;;
+    v*|[0-9]*) CTRL_VERSION_TAG="${arg#v}"; CTRL_REF="v${CTRL_VERSION_TAG}" ;;
   esac
 done
+
+# Default to latest when no version argument is given
+[[ -z "${CTRL_VERSION_TAG}" ]] && CTRL_VERSION_TAG="latest"
+
+CTRL_INSTALL_DIR="${HOME}/.local/share/ctrl/${CTRL_VERSION_TAG}"
 
 _print() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 _ok()    { printf '\033[1;32mok\033[0m %s\n' "$*"; }
@@ -22,7 +28,11 @@ _fail()  { printf '\033[1;31merror\033[0m %s\n' "$*" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || _fail "curl is required"
 command -v yq   >/dev/null 2>&1 || _warn "yq is not installed — ctrl requires yq (https://github.com/mikefarah/yq)"
 
-RAW_BASE="${CTRL_REPO/github.com/raw.githubusercontent.com}/refs/heads/main"
+if [[ "${CTRL_REF}" == "main" ]]; then
+  RAW_BASE="${CTRL_REPO/github.com/raw.githubusercontent.com}/refs/heads/main"
+else
+  RAW_BASE="${CTRL_REPO/github.com/raw.githubusercontent.com}/refs/tags/${CTRL_REF}"
+fi
 
 _download() {
   local path="$1" dest="$2"

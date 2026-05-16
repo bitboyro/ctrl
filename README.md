@@ -42,21 +42,23 @@ ctrl list           # show services with kind and image:tag
 
 ```yaml
 ctrl:
-  version: "0.0.1"
+  version: "0.1.0"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
   registry: docker.io/myorg
   env_files:
-    - .env            # sourced before every command
+    - .env                # sourced before every command
+    # .local/secrets.env is auto-loaded when present — no need to list it
 
 machines:
   default: prod-vm
   hosts:
     - name: prod-vm
-      host: "${VM_HOST}"    # always use env vars — never hardcode
+      host: "${VM_HOST}"            # always use env vars — never hardcode
       user: root
       port: 22
+      # password: "${VM_PASSWORD}"  # optional — requires sshpass
 
 services:
   - name: api
@@ -101,6 +103,39 @@ deployments:
 
 Secrets never go in `ctrl.yaml`. Use env vars (`"${MY_SECRET}"`) or a gitignored
 `.local/ctrl.local.yaml` for per-environment overrides.
+
+### `.local/` convention
+
+`ctrl init` creates a gitignored `.local/` directory at the project root with:
+
+```
+.local/
+├── .gitignore           # contains: *
+└── secrets.env.example  # template for local secret values
+```
+
+Drop your secrets in `.local/secrets.env` — ctrl auto-loads it whether or not
+it's listed in `meta.env_files`. When `.local/` exists, the audit journal is
+written to `.local/journal/journal.jsonl` (project-local), otherwise it falls
+back to `~/.local/share/ctrl/journal.jsonl`.
+
+### Password-based SSH
+
+If a machine cannot use key auth, declare a `password:` field that resolves
+from `.local/secrets.env`:
+
+```yaml
+machines:
+  hosts:
+    - name: legacy-box
+      host: "${LEGACY_HOST}"
+      user: root
+      password: "${LEGACY_PASSWORD}"   # resolved from .local/secrets.env
+```
+
+This requires `sshpass` on the local machine
+(`brew install sshpass` / `apt-get install sshpass`). Password values are
+redacted from `--dry-run` output and never appear in logs.
 
 ## Build pipeline
 
@@ -152,9 +187,30 @@ ctrl smoke-test api     # run smoke_tests scripts for a service (shorthand: ctrl
 ctrl script init backup-db      # scaffold scripts/backup-db.sh + register in ctrl.yaml
 ctrl run backup-db              # run a named script
 ctrl scripts                    # list scripts (shorthand: ctrl sc)
+ctrl scripts --tag deploy       # filter by tag
 ```
 
-Scripts receive `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR`,
+Generated scripts follow a structured template — path detection (`SCRIPT_DIR`,
+`CTRL_ROOT`), deployment context detection (`DEPLOYMENT_DIR`, `DEPLOYMENT_NAME`
+when placed under `<deployment>/ops/`), automatic core library loading with
+fallback stubs, `--help` / `--dry-run` / `--output` parsing, an entry-point
+guard (sourceable or executable), and a cleanup trap.
+
+To customize: drop your own template at `scripts/templates/ctrl-script.sh` in
+the project root — `ctrl script init` will use it instead of the built-in
+template (with `__NAME__` substituted).
+
+Scripts can carry optional `tags` for grouping:
+
+```yaml
+scripts:
+  - name: smoke-api
+    path: scripts/smoke-api.sh
+    tags: [smoke, deploy]
+```
+
+Scripts receive `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`,
+`CTRL_REMOTE_DIR`, `CTRL_CONFIG_FILE`, `CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`,
 `F33D_URL`, and `F33D_TOKEN` as environment variables.
 
 ## Config & info
@@ -224,9 +280,33 @@ Available tools: `list_services`, `list_machines`, `build_service`, `deploy_serv
 `release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`,
 `check_config`, `update_tag`, `get_history`
 
+## Versioning
+
+`ctrl version` prints the running version. Pin a required version in your
+`ctrl.yaml`:
+
+```yaml
+ctrl:
+  version: "0.1.0"
+```
+
+`ctrl check` warns when the running ctrl version doesn't match the declared
+one. Install a specific release by passing the tag to the installer:
+
+```bash
+./install.sh v0.1.0     # specific version
+./install.sh            # latest from main
+```
+
+Projects can vendor their own ctrl at `vendor/ctrl/ctrl.sh` or `.ctrl/ctrl.sh`
+next to `ctrl.yaml`; downstream wrappers can locate it via
+`ctrl_find_vendored`.
+
 ## Audit journal
 
-Every operation is logged to `~/.local/share/ctrl/journal.jsonl`:
+Every operation is logged to `.local/journal/journal.jsonl` (when a `.local/`
+directory exists at the project root) or `~/.local/share/ctrl/journal.jsonl`
+otherwise:
 
 ```bash
 ctrl history        # last 20 entries (shorthand: ctrl h)

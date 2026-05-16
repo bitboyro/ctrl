@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-16
+
+### Added
+- Structured script template — `ctrl script init <name>` now generates scripts with path detection (`SCRIPT_DIR`, `CTRL_ROOT`), deployment context detection (`DEPLOYMENT_DIR`, `DEPLOYMENT_NAME`), core library loading with inline fallback stubs, `_check_deps` / `_usage` functions, `--help` / `--dry-run` / `--output` flag parsing, entry-point guard (sourceable or executable), and a cleanup trap.
+- Template override — if `scripts/templates/ctrl-script.sh` exists in the project, it is used instead of the built-in template; falls back to built-in with a warning if missing/unreadable.
+- `.local/` convention — `ctrl init` creates a gitignored `.local/` directory with `.gitignore` (`*`) and `secrets.env.example`. `load_config()` auto-sources `.local/secrets.env` even when not listed in `meta.env_files`. Journal is written to `<project>/.local/journal/journal.jsonl` when `.local/` exists, falling back to `~/.local/share/ctrl/journal.jsonl`.
+- Version mismatch detection — `ctrl check` warns when the running ctrl version differs from `ctrl.version` declared in `ctrl.yaml`.
+- `install.sh` accepts an explicit version argument (`./install.sh v0.1.0`); without an argument it installs from `main`.
+- Vendored ctrl probe — `ctrl_find_vendored()` helper exposed for downstream wrappers to locate `vendor/ctrl/ctrl.sh` or `.ctrl/ctrl.sh` relative to a project's `ctrl.yaml`.
+- Script tag filtering — `ctrl scripts --tag <tag>` filters the script list by the `tags:` field declared on each script.
+- Machine password support — `machines.hosts[].password` resolves through `_resolve_env_refs` and is exported as `CTRL_META_SSH_PASSWORD`. `ctrl_ssh_run`, `ctrl_scp_send`, and `open_ssh` use it via `sshpass`; missing `sshpass` produces a clear install hint. Password values are redacted from dry-run output.
+- Script execution context — `run_script()` now also exports `CTRL_MACHINE_NAME` and `CTRL_DEPLOY_NAME` alongside existing variables.
+
+### Changed
+- SSH helpers no longer read the loose `SSH_PASSWORD` environment variable. Password auth is now driven exclusively by `machines.hosts[].password` (which itself can reference `${SSH_PASSWORD}` from `.local/secrets.env`). Workspaces that relied on the bare env var must add `password:` to their machine definition.
+
 ### Fixed
 - `ctrl scripts`, `ctrl sc`, and `ctrl script list` no longer fail on newer `yq` releases; script listing now uses a compatible expression format.
 - `ctrl hc` now skips `kind: library` entries and only expands `all` to services that actually have a configured health target, so SDK modules no longer appear as noisy pseudo-services in health runs.

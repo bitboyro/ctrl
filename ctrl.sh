@@ -3,6 +3,24 @@ set -euo pipefail
 
 CTRL_SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# ── Vendored ctrl detection ──────────────────────────────────────────────────
+# A project can vendor its own ctrl version at vendor/ctrl/ or .ctrl/ next to
+# ctrl.yaml. Callers (e.g. a project bootstrap script or wrapper) are
+# responsible for resolving that path and invoking the vendored ctrl.sh
+# directly — this script just exposes a probe for downstream tooling.
+ctrl_find_vendored() {
+  local start="${1:-${PWD}}" dir="${start}"
+  while [[ "${dir}" != "/" ]]; do
+    if [[ -f "${dir}/ctrl.yaml" ]]; then
+      [[ -x "${dir}/vendor/ctrl/ctrl.sh" ]] && { echo "${dir}/vendor/ctrl/ctrl.sh"; return 0; }
+      [[ -x "${dir}/.ctrl/ctrl.sh"       ]] && { echo "${dir}/.ctrl/ctrl.sh";       return 0; }
+      return 1
+    fi
+    dir="$(dirname "${dir}")"
+  done
+  return 1
+}
+
 source "${CTRL_SELF_DIR}/lib/core.sh"
 source "${CTRL_SELF_DIR}/lib/services.sh"
 source "${CTRL_SELF_DIR}/lib/deploy.sh"
@@ -354,8 +372,15 @@ case "${CMD}" in
 
   # ── list scripts ─────────────────────────────────────────────────────────
   scripts|sc)
+    _filter_tag=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --tag) shift; _filter_tag="${1:-}"; shift ;;
+        *)     shift ;;
+      esac
+    done
     printf '%s%-24s %s%s\n' "${BOLD}" "SCRIPT" "DESCRIPTION" "${RESET}"
-    list_scripts
+    list_scripts "${_filter_tag}"
     ;;
 
   # ── machines ─────────────────────────────────────────────────────────────
