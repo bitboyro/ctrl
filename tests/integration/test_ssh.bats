@@ -43,10 +43,10 @@ teardown() { teardown_test_dir; }
 
 @test "ctrl ssh fails cleanly when sshpass is missing" {
   if ! command -v sshpass >/dev/null 2>&1; then skip "sshpass already missing"; fi
-  # Simulate missing sshpass by pointing PATH at an empty dir.
-  local stub_dir="${TEST_TMP}/nostub"; mkdir -p "${stub_dir}"
+  # Simulate missing sshpass without depending on its install location.
   run env CTRL_CONFIG="${CTRL_CONFIG}" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
-    PATH="${stub_dir}:/usr/bin:/bin" "${CTRL_REPO_ROOT}/ctrl.sh" ssh testbox -- true
+    CTRL_SSHPASS_CMD="${TEST_TMP}/missing-sshpass" \
+    "${CTRL_REPO_ROOT}/ctrl.sh" ssh testbox -- true
   [[ "${status}" -ne 0 ]]
   [[ "${output}" == *"sshpass required"* ]]
 }

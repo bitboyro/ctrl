@@ -42,7 +42,7 @@ ctrl list           # show services with kind and image:tag
 
 ```yaml
 ctrl:
-  version: "0.1.0"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.1.1"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -287,14 +287,14 @@ Available tools: `list_services`, `list_machines`, `build_service`, `deploy_serv
 
 ```yaml
 ctrl:
-  version: "0.1.0"
+  version: "0.1.1"
 ```
 
 `ctrl check` warns when the running ctrl version doesn't match the declared
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.1.0     # specific version
+./install.sh v0.1.1     # specific version
 ./install.sh            # latest from main
 ```
 

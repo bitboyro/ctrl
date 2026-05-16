@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-16
+
 ### Added
 - GitHub Actions test suite (`.github/workflows/test.yml`) with five jobs: ShellCheck lint, unit tests (Ubuntu + macOS matrix), randomized property tests, `dist/ctrl` smoke tests, and SSH integration tests against a `linuxserver/openssh-server` service container. 59 bats-core tests under `tests/` cover Properties 1, 2, 3, 4, 5, 7, 8, and 14 from the design doc, plus MCP JSON-RPC and journal round-trips. Release workflow now requires the test workflow to pass before tagging.
 
@@ -25,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - SSH helpers no longer read the loose `SSH_PASSWORD` environment variable. Password auth is now driven exclusively by `machines.hosts[].password` (which itself can reference `${SSH_PASSWORD}` from `.local/secrets.env`). Workspaces that relied on the bare env var must add `password:` to their machine definition.
 
 ### Fixed
+- `ctrl sync` now preserves each configured relative `sync.paths` entry on the remote host instead of flattening files into the deployment root; password-auth SSH integration tests are now robust regardless of where `sshpass` is installed.
 - `ctrl scripts`, `ctrl sc`, and `ctrl script list` no longer fail on newer `yq` releases; script listing now uses a compatible expression format.
 - `ctrl hc` now skips `kind: library` entries and only expands `all` to services that actually have a configured health target, so SDK modules no longer appear as noisy pseudo-services in health runs.
 - MCP server (`ctrl mcp`) was emitting pretty-printed multi-line JSON; responses are now compact single-line JSON-RPC as required by the MCP stdio transport.

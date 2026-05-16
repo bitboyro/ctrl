@@ -34,6 +34,7 @@ _mcp_run_tool() {
   local params="$2"
 
   local output exit_code=0
+  # shellcheck disable=SC2034
   CTRL_JSON=1
 
   case "${tool}" in

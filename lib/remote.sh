@@ -3,16 +3,17 @@
 
 open_ssh() {
   local remote_dir="${CTRL_META_REMOTE_DIR}"
-  local target; target="${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}"
-  local port="${CTRL_META_SSH_PORT}"
+  local target port
+  target="${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}"
+  port="${CTRL_META_SSH_PORT}"
   local cmd="cd $(printf '%q' "${remote_dir}") && exec \${SHELL:-bash} -l"
 
   local -a flags=(-t -p "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && flags+=(-i "${CTRL_META_SSH_KEY}")
 
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd sshpass || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
-    sshpass -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${cmd}"
+    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    "${CTRL_SSHPASS_CMD}" -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${cmd}"
   else
     ssh "${flags[@]}" "${target}" "${cmd}"
   fi

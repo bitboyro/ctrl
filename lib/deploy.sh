@@ -33,19 +33,26 @@ resolve_deployment() {
   fi
 
   # Allow inline SSH overrides on a deployment target (backwards compat / staging)
-  local t_ssh_host; t_ssh_host="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_host // \"\"")")"
-  local t_ssh_user; t_ssh_user="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_user // \"\"")")"
-  local t_ssh_port; t_ssh_port="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_port // \"\"")")"
-  local t_ssh_key;  t_ssh_key="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_key // \"\"")")"
+  local t_ssh_host t_ssh_user t_ssh_port t_ssh_key
+  t_ssh_host="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_host // \"\"")")"
+  t_ssh_user="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_user // \"\"")")"
+  t_ssh_port="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_port // \"\"")")"
+  t_ssh_key="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_key // \"\"")")"
 
   [[ -n "${t_ssh_host}" && "${t_ssh_host}" != "null" ]] && CTRL_META_SSH_HOST="${t_ssh_host}"
   [[ -n "${t_ssh_user}" && "${t_ssh_user}" != "null" ]] && CTRL_META_SSH_USER="${t_ssh_user}"
+  # shellcheck disable=SC2034
   [[ -n "${t_ssh_port}" && "${t_ssh_port}" != "null" ]] && CTRL_META_SSH_PORT="${t_ssh_port}"
+  # shellcheck disable=SC2034
   [[ -n "${t_ssh_key}"  && "${t_ssh_key}"  != "null" ]] && CTRL_META_SSH_KEY="${t_ssh_key}"
 
-  local t_compose; t_compose="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .compose_path // \"\"")")"
-  [[ -n "${t_compose}" && "${t_compose}" != "null" ]] && \
-    { CTRL_META_COMPOSE_PATH="${t_compose}"; CTRL_META_REMOTE_DIR="$(dirname "${t_compose}")"; }
+  local t_compose
+  t_compose="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .compose_path // \"\"")")"
+  if [[ -n "${t_compose}" && "${t_compose}" != "null" ]]; then
+    # shellcheck disable=SC2034
+    CTRL_META_COMPOSE_PATH="${t_compose}"
+    CTRL_META_REMOTE_DIR="$(dirname "${t_compose}")"
+  fi
 
   CTRL_DEPLOY_SYNC_PATHS=()
   while IFS= read -r p; do
@@ -161,11 +168,14 @@ sync_files() {
 
   msg "[${CTRL_DEPLOY_NAME}] Syncing → ${CTRL_META_SSH_HOST}:${remote_dir}"
   ctrl_ssh_run "mkdir -p $(printf '%q' "${remote_dir}")"
-  local p abs_p
+  local p abs_p remote_parent remote_target
   for p in "${CTRL_DEPLOY_SYNC_PATHS[@]}"; do
     abs_p="${base}/${p}"
     [[ -e "${abs_p}" ]] || { msg_warn "Sync path not found, skipping: ${abs_p}"; continue; }
-    ctrl_scp_send "${abs_p}" "${remote_dir}/"
+    remote_target="${remote_dir}/${p}"
+    remote_parent="$(dirname "${remote_target}")"
+    ctrl_ssh_run "mkdir -p $(printf '%q' "${remote_parent}")"
+    ctrl_scp_send "${abs_p}" "${remote_parent}/"
   done
   msg_ok "[${CTRL_DEPLOY_NAME}] Sync complete"
 }
@@ -221,7 +231,7 @@ diff_deployment() {
     else
       status_label="DRIFT"; color="${RED}"
     fi
-    printf '  %-20s %-40s %-40s %s%s%s\n' \
+    printf '  %-20s %-40s %-40s %s\n' \
       "${svc}" \
       "${declared_img}:${declared_tag}" \
       "${running_tag:-none}" \

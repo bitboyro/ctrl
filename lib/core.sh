@@ -51,16 +51,23 @@ run_op() {
 # ── config ────────────────────────────────────────────────────────────────────
 CTRL_CONFIG_FILE="${CTRL_CONFIG:-}"
 CTRL_META_PROJECT=""
+# shellcheck disable=SC2034
 CTRL_META_REGISTRY=""
 # Active SSH connection — set by resolve_machine() or resolve_deployment()
 CTRL_META_SSH_HOST=""
 CTRL_META_SSH_USER="root"
+# shellcheck disable=SC2034
 CTRL_META_SSH_PORT="22"
+# shellcheck disable=SC2034
 CTRL_META_SSH_KEY=""
 CTRL_META_SSH_PASSWORD=""
+# shellcheck disable=SC2034
 CTRL_META_COMPOSE_PATH="/opt/scaffold/docker-compose.yml"
+# shellcheck disable=SC2034
 CTRL_META_REMOTE_DIR="/opt/scaffold"
+# shellcheck disable=SC2034
 CTRL_MACHINE_NAME=""
+CTRL_SSHPASS_CMD="${CTRL_SSHPASS_CMD:-sshpass}"
 
 _find_config() {
   if [[ -n "${CTRL_CONFIG_FILE}" ]]; then
@@ -110,6 +117,7 @@ load_config() {
     [[ "${env_file}" != /* ]] && env_file="${ctrl_base}/${env_file}"
     if [[ -f "${env_file}" ]]; then
       msg_verbose "Sourcing env file: ${env_file}"
+      # shellcheck disable=SC1090
       set -a; source "${env_file}"; set +a
       [[ "${env_file}" == "${local_secrets}" ]] && loaded_secrets=1
     fi
@@ -118,6 +126,7 @@ load_config() {
   # Implicit .local/secrets.env fallback (loaded if not already loaded above)
   if [[ -z "${loaded_secrets}" && -f "${local_secrets}" ]]; then
     msg_verbose "Sourcing implicit env file: ${local_secrets}"
+    # shellcheck disable=SC1090
     set -a; source "${local_secrets}"; set +a
   fi
 
@@ -271,13 +280,13 @@ ctrl_ssh_run() {
   local -a flags=()
   while IFS= read -r f; do flags+=("${f}"); done < <(_ssh_flags)
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd sshpass || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
     msg_verbose "ssh ${target} (password auth)"
     if [[ "${CTRL_DRY_RUN}" == "1" ]]; then
-      echo "${DIM}[DRY-RUN]${RESET} ssh ${target}: sshpass -p <redacted> ssh ${flags[*]} ${target} ${command}"
+      echo "${DIM}[DRY-RUN]${RESET} ssh ${target}: ${CTRL_SSHPASS_CMD} -p <redacted> ssh ${flags[*]} ${target} ${command}"
       return 0
     fi
-    sshpass -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${command}"
+    "${CTRL_SSHPASS_CMD}" -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${command}"
   else
     run_op "ssh ${target}" ssh "${flags[@]}" "${target}" "${command}"
   fi
@@ -290,13 +299,13 @@ ctrl_scp_send() {
   local -a scp_flags=(-P "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && scp_flags+=(-i "${CTRL_META_SSH_KEY}")
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd sshpass || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
     msg_verbose "scp ${src} → ${target}:${dst} (password auth)"
     if [[ "${CTRL_DRY_RUN}" == "1" ]]; then
-      echo "${DIM}[DRY-RUN]${RESET} scp ${src}: sshpass -p <redacted> scp ${scp_flags[*]} -r ${src} ${target}:${dst}"
+      echo "${DIM}[DRY-RUN]${RESET} scp ${src}: ${CTRL_SSHPASS_CMD} -p <redacted> scp ${scp_flags[*]} -r ${src} ${target}:${dst}"
       return 0
     fi
-    sshpass -p "${CTRL_META_SSH_PASSWORD}" scp "${scp_flags[@]}" -r "${src}" "${target}:${dst}"
+    "${CTRL_SSHPASS_CMD}" -p "${CTRL_META_SSH_PASSWORD}" scp "${scp_flags[@]}" -r "${src}" "${target}:${dst}"
   else
     run_op "scp ${src}" scp "${scp_flags[@]}" -r "${src}" "${target}:${dst}"
   fi
