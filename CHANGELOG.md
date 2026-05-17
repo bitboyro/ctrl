@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `deployments.targets[].sync.base` — optional local subdir prepended to each `sync.paths` entry, letting projects keep source files under a subdirectory (e.g. `dist/`) while the remote layout stays relative to the target's `compose_path` dir.
+
 ## [0.1.1] - 2026-05-16
 
 ### Added

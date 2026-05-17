@@ -161,6 +161,9 @@ deploy_services() {
 sync_files() {
   local remote_dir="${CTRL_META_REMOTE_DIR}"
   local base; base="$(dirname "${CTRL_CONFIG_FILE}")"
+  local sync_base
+  sync_base="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${CTRL_DEPLOY_NAME}\") | .sync.base // \"\"")"
+  [[ -n "${sync_base}" ]] && base="${base}/${sync_base}"
 
   if [[ "${#CTRL_DEPLOY_SYNC_PATHS[@]}" -eq 0 ]]; then
     msg_warn "[${CTRL_DEPLOY_NAME}] No sync.paths defined for this target; nothing to sync"

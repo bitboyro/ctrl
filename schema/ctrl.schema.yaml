@@ -84,8 +84,9 @@ deployments:               # required for sync / dep / rdep / diff / hc commands
       ssh_port: string
       ssh_key: string
       sync:
+        base: string       # optional — local subdir prepended to each path; remote target stays relative to compose_path's dir
         paths:
-          - string         # files/dirs to rsync (relative to ctrl.yaml)
+          - string         # files/dirs to rsync (relative to ctrl.yaml, or to sync.base if set)
 
 extensions:                # optional — sourced at startup, can define ctrl_cmd_<name>()
   - string                 # path to extension script relative to ctrl.yaml
