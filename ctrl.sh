@@ -133,16 +133,18 @@ Health:
 
 Scripts:
   run           <name> [args]        Run a named script
+  script        [list]               List scripts
   script        init <name>          Create script from template, register in ctrl.yaml
   scripts       / sc                 List scripts
 
 Config & info:
   init                               Interactive wizard — generate ctrl.yaml
-  check         [--json]             Validate ctrl.yaml
+  check         / c [--json]         Validate ctrl.yaml
+  list          / ls                 List all services
   info          [machine|svc]        Show project / machine / service detail
   machines      / m                  List all machines
   diff          [target] [--json]    Declared vs running image:tag (drift)
-  tag           <svc> <tag>          Update service tag in ctrl.yaml
+  tag           / t <svc> <tag>      Update service tag in ctrl.yaml
   default       <name>               Set machines.default or deployments.default
 
 Audit:
@@ -252,22 +254,26 @@ case "${CMD}" in
   # ── deploy ───────────────────────────────────────────────────────────────
   deploy|d)
     _resolve_target_and_services "$@"
+    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")"
+      _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
-      read -r -a svcs <<< "$(ctrl_resolve_services all)"
+      _svc_out="$(ctrl_resolve_services all)" || exit 1
     fi
+    read -r -a svcs <<< "${_svc_out}"
     with_journal "deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;
 
   # ── redeploy ─────────────────────────────────────────────────────────────
   redeploy|rd)
     _resolve_target_and_services "$@"
+    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")"
+      _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
-      read -r -a svcs <<< "$(ctrl_resolve_services all)"
+      _svc_out="$(ctrl_resolve_services all)" || exit 1
     fi
+    read -r -a svcs <<< "${_svc_out}"
     run_for_each release_service "${svcs[@]}"
     with_journal "redeploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;
@@ -275,11 +281,13 @@ case "${CMD}" in
   # ── sync-deploy ──────────────────────────────────────────────────────────
   sync-deploy|sd)
     _resolve_target_and_services "$@"
+    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")"
+      _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
-      read -r -a svcs <<< "$(ctrl_resolve_services all)"
+      _svc_out="$(ctrl_resolve_services all)" || exit 1
     fi
+    read -r -a svcs <<< "${_svc_out}"
     sync_files
     with_journal "sync-deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;

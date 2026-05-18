@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `deploy`, `redeploy`, and `sync-deploy` commands no longer crash with `unbound variable` when an unknown service name is given. The subshell exit code from `ctrl_resolve_services` was previously swallowed by `read`; now captured into a variable first so `|| exit 1` correctly propagates the failure.
+- `ctrl help` now lists the existing `list` / `ls`, `check` / `c`, and `tag` / `t` commands correctly, and documents script listing via `ctrl script` / `ctrl script list`.
+
 ### Added
 - `deployments.targets[].sync.base` — optional local subdir prepended to each `sync.paths` entry, letting projects keep source files under a subdirectory (e.g. `dist/`) while the remote layout stays relative to the target's `compose_path` dir.
 
