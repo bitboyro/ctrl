@@ -169,6 +169,7 @@ resolve_machine() {
   CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .port // \"22\"")")"
   CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .key // \"\"")")"
   CTRL_META_SSH_PASSWORD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .password // \"\"")")"
+  # shellcheck disable=SC2034
   CTRL_META_SSH_CWD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .cwd // \"\"")")"
   export CTRL_META_SSH_PASSWORD
   # shellcheck disable=SC2034
