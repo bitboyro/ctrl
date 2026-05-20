@@ -58,6 +58,7 @@ machines:
       host: "${VM_HOST}"            # always use env vars — never hardcode
       user: root
       port: 22
+      cwd: /root                     # optional interactive SSH start dir for `ctrl ssh prod-vm`
       # password: "${VM_PASSWORD}"  # optional — requires sshpass
 
 services:
@@ -94,11 +95,12 @@ deployments:
   targets:
     - name: prod
       machine: prod-vm
-      compose_path: /opt/scaffold/docker-compose.yml
+      compose_path: /opt/my-platform/docker-compose.yml
+      # cwd: /opt/my-platform        # optional override for `ctrl ssh prod`
       sync:
         paths:
-          - scaffold/docker-compose.yml
-          - scaffold/.env
+          - deploy/docker-compose.yml
+          - deploy/.env
 ```
 
 Secrets never go in `ctrl.yaml`. Use env vars (`"${MY_SECRET}"`) or a gitignored
@@ -136,6 +138,31 @@ machines:
 This requires `sshpass` on the local machine
 (`brew install sshpass` / `apt-get install sshpass`). Password values are
 redacted from `--dry-run` output and never appear in logs.
+
+### Interactive SSH Start Directory
+
+`ctrl ssh` can now start in a configurable directory that is separate from the
+deployment compose directory:
+
+```yaml
+machines:
+  hosts:
+    - name: legacy-box
+      host: "${LEGACY_HOST}"
+      user: root
+      cwd: /root
+
+deployments:
+  targets:
+    - name: legacy-prod
+      machine: legacy-box
+      compose_path: /srv/legacy/docker-compose.yml
+      cwd: /srv/legacy
+```
+
+- `machines.hosts[].cwd` sets the default interactive start dir for `ctrl ssh <machine>`.
+- `deployments.targets[].cwd` overrides that for `ctrl ssh <deployment>`.
+- Compose-driven commands such as `ctrl deploy`, `ctrl rs`, `ctrl rl`, and `ctrl env` still use `dirname(compose_path)`.
 
 ## Build pipeline
 
@@ -184,7 +211,7 @@ ctrl smoke-test api     # run smoke_tests scripts for a service (shorthand: ctrl
 ## Scripts
 
 ```bash
-ctrl script init backup-db      # scaffold scripts/backup-db.sh + register in ctrl.yaml
+ctrl script init backup-db      # create scripts/backup-db.sh + register in ctrl.yaml
 ctrl run backup-db              # run a named script
 ctrl scripts                    # list scripts (shorthand: ctrl sc)
 ctrl scripts --tag deploy       # filter by tag

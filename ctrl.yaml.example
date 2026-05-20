@@ -20,6 +20,7 @@ machines:
       host: "${VM_HOST}"   # resolved from env at runtime — never hardcode
       user: root
       port: 22
+      # cwd: /root          # optional interactive SSH start dir for `ctrl ssh prod-vm`
       # key: "${SSH_KEY}"  # optional path to private key
 
 services:
@@ -72,12 +73,13 @@ deployments:
   targets:
     - name: prod
       machine: prod-vm
-      compose_path: /opt/scaffold/docker-compose.yml
+      compose_path: /opt/my-platform/docker-compose.yml
+      # cwd: /opt/my-platform  # optional interactive SSH start dir override for `ctrl ssh prod`
       sync:
         paths:
-          - scaffold/docker-compose.yml
-          - scaffold/traefik
-          - scaffold/prometheus
-          - scaffold/.env
+          - deploy/docker-compose.yml
+          - deploy/traefik
+          - deploy/prometheus
+          - deploy/.env
 
 extensions: []

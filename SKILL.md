@@ -151,11 +151,11 @@ deployments:
   targets:
     - name: prod
       machine: prod-vm       # references machines.hosts[].name
-      compose_path: /opt/scaffold/docker-compose.yml
+      compose_path: /opt/my-platform/docker-compose.yml
       sync:
         paths:
-          - scaffold/docker-compose.yml
-          - scaffold/traefik
+          - deploy/docker-compose.yml
+          - deploy/traefik
 
     - name: staging
       machine: prod-vm       # same machine, different compose path

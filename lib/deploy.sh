@@ -46,12 +46,18 @@ resolve_deployment() {
   # shellcheck disable=SC2034
   [[ -n "${t_ssh_key}"  && "${t_ssh_key}"  != "null" ]] && CTRL_META_SSH_KEY="${t_ssh_key}"
 
-  local t_compose
+  local t_compose t_cwd
   t_compose="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .compose_path // \"\"")")"
+  t_cwd="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .cwd // \"\"")")"
   if [[ -n "${t_compose}" && "${t_compose}" != "null" ]]; then
     # shellcheck disable=SC2034
     CTRL_META_COMPOSE_PATH="${t_compose}"
     CTRL_META_REMOTE_DIR="$(dirname "${t_compose}")"
+  fi
+  if [[ -n "${t_cwd}" && "${t_cwd}" != "null" ]]; then
+    CTRL_META_SSH_CWD="${t_cwd}"
+  elif [[ -z "${CTRL_META_SSH_CWD}" && -n "${t_compose}" && "${t_compose}" != "null" ]]; then
+    CTRL_META_SSH_CWD="${CTRL_META_REMOTE_DIR}"
   fi
 
   CTRL_DEPLOY_SYNC_PATHS=()

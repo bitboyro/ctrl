@@ -62,9 +62,11 @@ CTRL_META_SSH_PORT="22"
 CTRL_META_SSH_KEY=""
 CTRL_META_SSH_PASSWORD=""
 # shellcheck disable=SC2034
-CTRL_META_COMPOSE_PATH="/opt/scaffold/docker-compose.yml"
+CTRL_META_SSH_CWD=""
 # shellcheck disable=SC2034
-CTRL_META_REMOTE_DIR="/opt/scaffold"
+CTRL_META_COMPOSE_PATH="/opt/app/docker-compose.yml"
+# shellcheck disable=SC2034
+CTRL_META_REMOTE_DIR="/opt/app"
 # shellcheck disable=SC2034
 CTRL_MACHINE_NAME=""
 CTRL_SSHPASS_CMD="${CTRL_SSHPASS_CMD:-sshpass}"
@@ -167,6 +169,7 @@ resolve_machine() {
   CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .port // \"22\"")")"
   CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .key // \"\"")")"
   CTRL_META_SSH_PASSWORD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .password // \"\"")")"
+  CTRL_META_SSH_CWD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .cwd // \"\"")")"
   export CTRL_META_SSH_PASSWORD
   # shellcheck disable=SC2034
   CTRL_MACHINE_NAME="${name}"

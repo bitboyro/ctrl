@@ -55,6 +55,7 @@ machines:
       host: "\${${ssh_host_var}}"
       user: ${ssh_user}
       port: 22
+      # cwd: /root
 
 services: []
 
@@ -64,6 +65,7 @@ deployments:
     - name: prod
       machine: ${machine_name}
       compose_path: ${compose_path}
+      # cwd: $(dirname "${compose_path}")
       sync:
         paths: []
 
@@ -74,7 +76,7 @@ YAML
 
   msg_ok "Created ${config_file}"
 
-  # ── .local/ scaffolding ─────────────────────────────────────────────────────
+  # ── .local/ setup ───────────────────────────────────────────────────────────
   local local_dir="${target_dir}/.local"
   mkdir -p "${local_dir}"
   if [[ ! -f "${local_dir}/.gitignore" ]]; then
@@ -94,7 +96,7 @@ ENV
   echo ""
   echo "Next steps:"
   echo "  1. Add services to ctrl.yaml"
-  echo "  2. Set \${${ssh_host_var}} in your environment or scaffold/.env"
+  echo "  2. Set \${${ssh_host_var}} in your environment or .env"
   echo "  3. ctrl list"
   echo ""
 

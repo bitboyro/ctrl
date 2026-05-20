@@ -21,6 +21,7 @@ machines:                  # optional — SSH hosts
       user: string         # default: root
       port: string         # default: "22"
       key: string          # optional — path to SSH private key, supports ${ENV_VAR}
+      cwd: string          # optional — interactive SSH start dir for `ctrl ssh <machine>`
 
 services:                  # required — list of service definitions
   - name: string           # required — unique, lowercase, hyphen-separated
@@ -78,6 +79,7 @@ deployments:               # required for sync / dep / rdep / diff / hc commands
     - name: string         # unique target name (e.g. prod, staging)
       machine: string      # references machines.hosts[].name
       compose_path: string # path to docker-compose.yml on the remote VM
+      cwd: string          # optional — interactive SSH start dir override for `ctrl ssh <deployment>`
       # inline SSH overrides (optional, backwards compat or when no machines: block)
       ssh_host: string
       ssh_user: string

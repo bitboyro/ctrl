@@ -194,13 +194,13 @@ deployments:
   targets:
     - name: prod
       machine: prod-vm
-      compose_path: /opt/scaffold/docker-compose.yml
+      compose_path: /opt/my-platform/docker-compose.yml
       sync:
         paths:
-          - scaffold/docker-compose.yml
-          - scaffold/traefik
-          - scaffold/prometheus
-          - scaffold/.env
+          - deploy/docker-compose.yml
+          - deploy/traefik
+          - deploy/prometheus
+          - deploy/.env
 
 extensions: []
 YAML
@@ -220,7 +220,7 @@ else
   if [[ ! -f "${PWD}/ctrl.yaml" ]]; then
     _generate_example
     _warn "No ctrl.yaml found. A ctrl.yaml.example has been generated."
-    _warn "Rename it to ctrl.yaml and fill in your values, or run 'ctrl' Claude skill to scaffold it."
+    _warn "Rename it to ctrl.yaml and fill in your values, or run the 'ctrl' Claude skill to generate it."
   fi
 fi
 

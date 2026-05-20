@@ -2,12 +2,16 @@
 # remote.sh — ssh, remote-status, remote-logs, env (container environment)
 
 open_ssh() {
-  local remote_dir="${CTRL_META_REMOTE_DIR}"
+  local ssh_cwd="${CTRL_META_SSH_CWD:-}"
   local target port
   target="${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}"
   port="${CTRL_META_SSH_PORT}"
   local cmd
-  cmd="cd $(printf '%q' "${remote_dir}") && exec \${SHELL:-bash} -l"
+  if [[ -n "${ssh_cwd}" ]]; then
+    cmd="cd $(printf '%q' "${ssh_cwd}") && exec \${SHELL:-bash} -l"
+  else
+    cmd="exec \${SHELL:-bash} -l"
+  fi
 
   local -a flags=(-t -p "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && flags+=(-i "${CTRL_META_SSH_KEY}")
