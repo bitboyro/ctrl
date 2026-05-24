@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `ctrl cp` — copy files and directories between local paths and named machines from `ctrl.yaml` using `rsync`. Supports local-to-local, local-to-remote, remote-to-local, and remote-to-remote transfers, plus `--exclude`, `--delete`, and `--progress` flags. Remote transfers reuse the configured SSH machine settings, and remote-to-remote copies are performed via a temporary local bounce.
+
 ## [0.1.2] - 2026-05-20
 
 ### Fixed

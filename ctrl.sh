@@ -34,6 +34,7 @@ source "${CTRL_SELF_DIR}/lib/init.sh"
 source "${CTRL_SELF_DIR}/lib/check.sh"
 source "${CTRL_SELF_DIR}/lib/info.sh"
 source "${CTRL_SELF_DIR}/lib/mcp.sh"
+source "${CTRL_SELF_DIR}/lib/cp.sh"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 run_for_each() {
@@ -431,6 +432,12 @@ case "${CMD}" in
 
   version)
     echo "ctrl v${CTRL_VERSION}"
+    ;;
+
+  # ── cp ───────────────────────────────────────────────────────────────────
+  cp)
+    [[ "$#" -ge 2 ]] || fail "Usage: ctrl cp [--exclude PAT] [--delete] [--progress] <src> <dst>"
+    ctrl_cp "$@"
     ;;
 
   # ── extension commands ────────────────────────────────────────────────────
