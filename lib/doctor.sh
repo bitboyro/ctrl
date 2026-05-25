@@ -35,12 +35,12 @@ ctrl_doctor() {
   echo "  ──────────────────────────────────────────────────────────"
 
   # Optional project tools (from meta.tools in ctrl.yaml)
-  _doctor_check_project_tools all_ok "${auto_install}"
+  _doctor_check_project_tools all_ok "${auto_install}" || true
 
   echo ""
 
   # Env var check
-  _doctor_check_env_vars all_ok
+  _doctor_check_env_vars all_ok || true
 
   # ctrl.yaml validity
   echo ""
@@ -64,7 +64,7 @@ ctrl_doctor() {
 _doctor_check_tool() {
   local name="$1" kind="$2" note="$3"
   local brew_hint="$4" apt_hint="$5" pip_hint="$6" curl_hint="$7"
-  local -n _ok_ref="$8"
+  local _ok_ref_name="$8"
   local auto_install="$9"
 
   printf '  %-16s ' "${name}"
@@ -76,7 +76,7 @@ _doctor_check_tool() {
 
   if [[ "${kind}" == "required" ]]; then
     printf '%s%-8s%s' "${RED}" "missing" "${RESET}"
-    _ok_ref=0
+    eval "${_ok_ref_name}=0"
   else
     printf '%s%-8s%s' "${YELLOW}" "missing" "${RESET}"
   fi
@@ -106,7 +106,7 @@ _doctor_best_install() {
 }
 
 _doctor_check_project_tools() {
-  local -n _ok_ref2="$1"
+  local _ok_ref2_name="$1"
   local auto_install="$2"
 
   local tools_count; tools_count="$(echo "${CTRL_YAML}" | yq '.meta.tools | length // 0' 2>/dev/null || echo "0")"
@@ -130,12 +130,12 @@ _doctor_check_project_tools() {
     local curl_cmd=""
     [[ -n "${curl_h}" && "${curl_h}" != "null" ]] && curl_cmd="${curl_h}"
 
-    _doctor_check_tool "${tname}" optional "${tdesc}" "${brew_cmd}" "" "${pip_cmd}" "${curl_cmd}" _ok_ref2 "${auto_install}"
+    _doctor_check_tool "${tname}" optional "${tdesc}" "${brew_cmd}" "" "${pip_cmd}" "${curl_cmd}" "${_ok_ref2_name}" "${auto_install}"
   done
 }
 
 _doctor_check_env_vars() {
-  local -n _ok_ref3="$1"
+  local _ok_ref3_name="$1"
 
   # Extract all ${VAR} references from ctrl.yaml
   local -a vars=()
@@ -154,7 +154,7 @@ _doctor_check_env_vars() {
       printf '%s%s%s\n' "${GREEN}" "set" "${RESET}"
     else
       printf '%s%s%s\n' "${YELLOW}" "unset" "${RESET}"
-      _ok_ref3=0
+      eval "${_ok_ref3_name}=0"
     fi
   done
 }

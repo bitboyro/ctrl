@@ -108,9 +108,14 @@ case "${1:-}" in
   completion)
     shift
     _shell="${1:-bash}"
-    _comp_file="${CTRL_SELF_DIR}/completions/ctrl.${_shell}"
-    [[ -f "${_comp_file}" ]] || { echo "No completion for shell: ${_shell}. Available: bash, zsh" >&2; exit 1; }
-    cat "${_comp_file}"
+    # In the bundled dist, completion scripts are embedded as functions.
+    if declare -f "_ctrl_embedded_completion_${_shell}" >/dev/null 2>&1; then
+      "_ctrl_embedded_completion_${_shell}"
+    else
+      _comp_file="${CTRL_SELF_DIR}/completions/ctrl.${_shell}"
+      [[ -f "${_comp_file}" ]] || { echo "No completion for shell: ${_shell}. Available: bash, zsh" >&2; exit 1; }
+      cat "${_comp_file}"
+    fi
     exit 0
     ;;
   help|--help|-h|"")

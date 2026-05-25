@@ -7,7 +7,7 @@ OUT_DIR="${CTRL_DIR}/dist"
 OUT="${OUT_DIR}/ctrl"
 VERSION="$(cat "${CTRL_DIR}/VERSION" 2>/dev/null || echo "unknown")"
 
-LIBS=(core services deploy remote health audit ext gitlab templates init check info mcp)
+LIBS=(core services deploy remote health audit ext gitlab templates init check info mcp probe doctor)
 
 mkdir -p "${OUT_DIR}"
 
@@ -25,6 +25,20 @@ mkdir -p "${OUT_DIR}"
     echo "# ════════════════════════════════════════════════════════════════════════════"
     # strip: shebang, set -euo pipefail, CTRL_VERSION= (already set above)
     grep -v '^#!/\|^set -euo pipefail\|^CTRL_VERSION=' "${CTRL_DIR}/lib/${lib}.sh"
+    echo ""
+  done
+
+  # Embed completion scripts so dist/ctrl is fully self-contained.
+  for _csh in bash zsh; do
+    _csh_upper="$(echo "${_csh}" | tr '[:lower:]' '[:upper:]')"
+    echo "# ════════════════════════════════════════════════════════════════════════════"
+    echo "# completions/ctrl.${_csh} — embedded"
+    echo "# ════════════════════════════════════════════════════════════════════════════"
+    echo "_ctrl_embedded_completion_${_csh}() {"
+    echo "cat <<'CTRL_COMPLETION_${_csh_upper}'"
+    cat "${CTRL_DIR}/completions/ctrl.${_csh}"
+    echo "CTRL_COMPLETION_${_csh_upper}"
+    echo "}"
     echo ""
   done
 
