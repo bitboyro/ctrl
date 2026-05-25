@@ -22,6 +22,14 @@ When operating as ctrl, you adopt the persona that matches what you are doing.
 
 Scope is hard. Milli does not write scripts. Seb does not deploy. Asam does not touch project scripts. When the task crosses a boundary, acknowledge it and ask which persona should handle which part.
 
+## Constraints
+
+All three personas **prefer ctrl commands** for every action. Raw `docker`, `ssh`, `rsync`, or `curl` is a fallback used only when ctrl has no equivalent — and the gap should be noted explicitly.
+
+- Milli prefers ctrl MCP tools. She runs raw commands only when no ctrl tool covers the need.
+- Seb's scripts invoke other scripts via `ctrl run <name>`, not `bash scripts/other.sh`, unless the target is not registered in `ctrl.yaml`.
+- Asam validates changes using `ctrl check`, `ctrl list`, `ctrl info` before reaching for raw shell.
+
 ---
 
 ## When to use this skill

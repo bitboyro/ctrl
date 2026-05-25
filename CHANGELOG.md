@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `ctrl ping <svc|machine>` — HTTP ping a service's health URL or TCP ping a machine, with per-request latency and min/avg/max/loss summary. Only accepts names registered in `ctrl.yaml`.
+- `ctrl call <svc> <path>` — authenticated REST call against a named service. Base URL resolved from `health.port` or `api.base_url`. Injects `Authorization: Bearer $JWT_TOKEN` if set. Flags: `--method`, `--body`, `--header`.
+- `ctrl probe` — unified diagnostics command with three modes:
+  - `ctrl probe <svc|machine>` — HTTP or TCP connectivity check.
+  - `ctrl probe sniff <svc>` — live tcpdump via the `ghcr.io/bitboyro/ctrl-tools` container on the service's Docker network; `--host` for host-level tcpdump; `--save` writes to `.local/captures/`; deployment target runs the capture remotely.
+  - `ctrl probe shell` — interactive shell inside ctrl-tools container; `--network`, `--mount`, `--no-network` flags.
+- `ctrl doctor [--install]` — pre-flight dependency check. Reports required and optional tools, checks all `${VAR}` references in `ctrl.yaml` against current env, validates the config. `--install` auto-installs missing tools using the best available method (pip → brew → apt-get → curl). Reads `meta.tools[]` from `ctrl.yaml` for project-specific tool hints.
+- `ctrl completion <bash|zsh>` — print shell completion script. Dynamically completes service names, machine names, and script names from ctrl.yaml. Install with `eval "$(ctrl completion bash)"`.
+- `meta.tools[]` block in `ctrl.yaml` — declare project-specific tool dependencies with install hints for pip, brew, and curl. Used by `ctrl doctor`.
+- Per-command help: `ctrl help <command>` prints a focused page with description, ctrl.yaml fields read, flags, and examples. Supported for: `build`, `image`, `push`, `release`, `deploy`, `ssh`, `remote-logs`, `health-check`, `ping`, `call`, `probe`, `doctor`, `diff`, `run`.
+- `lib/probe.sh` — implementation for `ctrl ping`, `ctrl call`, `ctrl probe`.
+- `lib/doctor.sh` — implementation for `ctrl doctor`.
+- `completions/ctrl.bash` and `completions/ctrl.zsh` — shell completion scripts.
+
+### Changed
+- `ctrl help` rewritten: quick-start block at top, per-group examples inline, consistent column alignment, deps line at the bottom (`ctrl doctor` hint).
+- All commands now journaled. Previously only build/deploy pipeline commands were written to the audit journal. Added `with_journal` wrapping for: `ssh`, `remote-status`, `remote-logs`, `env`, `health-check`, `wait-ready`, `smoke-test`, `run`, `diff`, `check`, `tag`, `default`.
+- Agent definitions updated — all three personas (`milli`, `seb`, `asam`) now document their preference for ctrl commands over raw shell, with explicit fallback policy.
+- `SKILL.md` — added Constraints section documenting the ctrl-first rule for all three personas.
+- `README.md` — added Shell completion, Diagnostics, Workflows, and Troubleshooting sections; updated deps table with new entries.
+
 - `ctrl cp` — copy files and directories between local paths and named machines from `ctrl.yaml` using `rsync`. Supports local-to-local, local-to-remote, remote-to-local, and remote-to-remote transfers, plus `--exclude`, `--delete`, and `--progress` flags. Remote transfers reuse the configured SSH machine settings, and remote-to-remote copies are performed via a temporary local bounce.
 
 ## [0.1.2] - 2026-05-20

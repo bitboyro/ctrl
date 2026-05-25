@@ -56,3 +56,65 @@ teardown() { teardown_test_dir; }
   [[ "${status}" -eq 0 ]]
   [[ "${output}" == *"Usage:"* ]]
 }
+
+@test "dist/ctrl completion bash exits 0 and contains _ctrl function" {
+  run "${DIST_CTRL}" completion bash
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"_ctrl"* ]] || { echo "completion bash missing _ctrl"; return 1; }
+  [[ "${output}" == *"complete"* ]] || { echo "completion bash missing complete call"; return 1; }
+}
+
+@test "dist/ctrl completion zsh exits 0 and contains compdef directive" {
+  run "${DIST_CTRL}" completion zsh
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"#compdef ctrl"* ]] || { echo "completion zsh missing #compdef ctrl"; return 1; }
+}
+
+@test "dist/ctrl completion with unknown shell exits non-zero" {
+  run "${DIST_CTRL}" completion fish
+  [[ "${status}" -ne 0 ]]
+}
+
+@test "dist/ctrl doctor exits 0 against a valid fixture" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" doctor
+  # doctor may report missing optional tools but should not crash
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"ctrl.yaml"* ]] || { echo "doctor missing ctrl.yaml check line"; return 1; }
+}
+
+@test "dist/ctrl help build prints build-specific help page" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" help build
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"build"* ]] || { echo "help build output missing 'build'"; return 1; }
+  [[ "${output}" == *"Example"* ]] || { echo "help build output missing examples"; return 1; }
+}
+
+@test "dist/ctrl help deploy prints deploy-specific help page" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" help deploy
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"deploy"* ]] || { echo "help deploy output missing 'deploy'"; return 1; }
+}
+
+@test "dist/ctrl ping with unknown name exits non-zero with clear message" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" ping no-such-service
+  [[ "${status}" -ne 0 ]]
+  [[ "${output}" == *"Unknown service or machine"* ]] || { echo "ping error message missing"; return 1; }
+}
+
+@test "dist/ctrl call with unknown service exits non-zero" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" call no-such-service /health
+  [[ "${status}" -ne 0 ]]
+  [[ "${output}" == *"Unknown service"* ]] || { echo "call error message missing"; return 1; }
+}
+
+@test "dist/ctrl probe with unknown target exits non-zero" {
+  write_fixture_yaml
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" probe no-such-target
+  [[ "${status}" -ne 0 ]]
+  [[ "${output}" == *"Unknown service or machine"* ]] || { echo "probe error message missing"; return 1; }
+}

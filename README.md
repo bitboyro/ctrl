@@ -28,7 +28,13 @@ Then run `ctrl init` — it offers to add `~/.local/bin` to `PATH` automatically
 | `jq` | always | JSON processing |
 | `curl` | always | health checks, GitLab API, f33d notifications |
 | `ssh` | always | remote access (`ssh`, `rs`, `rl`, `env`) |
-| `docker` | build/push/deploy only | image build, push, and compose operations |
+| `docker` | build/push/deploy/probe | image build, push, compose ops, and running ctrl-tools |
+| `rsync` | sync commands | file sync to deployment targets |
+| `nc` | `ctrl probe --tcp` | TCP connectivity checks (pre-installed on most systems) |
+| `tcpdump` | `ctrl probe sniff --host` | host-level packet capture (optional; container mode uses ctrl-tools) |
+| `sshpass` | optional | password-based SSH machines |
+
+Run `ctrl doctor` to verify all deps and get install hints for anything missing.
 
 ## Quick start
 
@@ -36,6 +42,18 @@ Then run `ctrl init` — it offers to add `~/.local/bin` to `PATH` automatically
 ctrl init           # interactive wizard — generates ctrl.yaml
 ctrl check          # validate the config
 ctrl list           # show services with kind and image:tag
+```
+
+## Shell completion
+
+```bash
+# bash — add to ~/.bashrc
+eval "$(ctrl completion bash)"
+
+# zsh — add to ~/.zshrc
+eval "$(ctrl completion zsh)"
+# or install as a fpath function:
+ctrl completion zsh > "${fpath[1]}/_ctrl"
 ```
 
 ## ctrl.yaml
@@ -339,6 +357,94 @@ otherwise:
 ctrl history        # last 20 entries (shorthand: ctrl h)
 ctrl history 50
 ```
+
+## Diagnostics
+
+```bash
+ctrl ping api                          # HTTP ping api's health URL (5 times, with latency)
+ctrl ping api --n 10                   # 10 pings
+ctrl ping prod-vm                      # TCP ping machine on port 22
+
+ctrl call api /actuator/info           # GET request — base URL from health.port
+ctrl call api /users --method POST --body '{"name":"test"}'
+# JWT_TOKEN env var injected automatically if set
+
+ctrl probe api                         # HTTP connectivity check
+ctrl probe api --tcp                   # TCP check
+ctrl probe prod-vm --port 5432 --tcp   # check postgres port on a machine
+
+ctrl probe sniff api                   # live tcpdump via ctrl-tools container
+ctrl probe sniff api --filter 'port 5432' --save  # save to .local/captures/
+ctrl probe sniff prod api --duration 60 --save    # remote capture, pull pcap back
+ctrl probe sniff api --host            # tcpdump on host machine instead of container
+
+ctrl probe shell                       # interactive ctrl-tools shell
+ctrl probe shell --network api         # joined to api's Docker network
+ctrl probe shell --mount ./logs:/data  # with host dir mounted
+
+ctrl doctor                            # check all deps, show install hints
+ctrl doctor --install                  # auto-install missing tools
+```
+
+The `ctrl probe sniff` and `ctrl probe shell` commands use the
+`ghcr.io/bitboyro/ctrl-tools` image — pulled on demand, never built locally.
+It bundles `tcpdump`, `tshark`, `curl`, `nc`, `nmap`, `jq`, `python3`, and `scanos`.
+
+## Workflows
+
+**First deploy:**
+```bash
+ctrl init            # generate ctrl.yaml
+ctrl check           # validate
+ctrl release api     # build + image + push
+ctrl sync            # rsync compose files to the server
+ctrl deploy api      # pull + start on the server
+ctrl hc api          # verify health
+```
+
+**Daily ops:**
+```bash
+ctrl diff            # check for image drift before deploying
+ctrl release api     # build new image
+ctrl deploy api      # deploy to default target
+ctrl hc api          # verify
+ctrl history 5       # see audit trail
+```
+
+**Debugging a live service:**
+```bash
+ctrl rs              # docker compose ps
+ctrl rl api --follow # tail logs
+ctrl env api         # inspect container env
+ctrl probe sniff api --filter 'port 5432'  # watch database traffic
+ctrl ssh             # drop into the machine
+```
+
+## Troubleshooting
+
+**Missing dependency**
+```
+error  Required command not found: yq
+```
+Run `ctrl doctor` for install hints, or `ctrl doctor --install` to auto-install.
+
+**Env var not set**
+```
+error  Machine 'prod-vm' has no host defined
+```
+Check `ctrl doctor` for unset vars. Declare them in `.local/secrets.env` or export before running ctrl.
+
+**SSH key not found / permission denied**
+Verify `machines.hosts[].key` resolves correctly: `ctrl info prod-vm`. Ensure the key path is correct and the file is readable.
+
+**ctrl.yaml version mismatch**
+```
+warn  ctrl version (0.1.2) differs from ctrl.version declared in ctrl.yaml (0.1.1)
+```
+Update `ctrl.version` in `ctrl.yaml` to match `ctrl version`, or upgrade ctrl.
+
+**`ctrl probe sniff` fails: container can't see traffic**
+The service container may be on a bridge network that doesn't allow raw capture. Try `--host` mode, or run the probe from the remote machine: `ctrl probe sniff prod api`.
 
 ## Service kinds
 

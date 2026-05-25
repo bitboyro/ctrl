@@ -27,6 +27,7 @@ msg_verbose() { [[ "${CTRL_VERBOSE}" == "1" ]] && echo "${DIM}[verbose]${RESET} 
 fail() { msg_error "$*"; exit 1; }
 
 require_cmd() {
+  local cmd
   for cmd in "$@"; do
     command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: ${cmd}
 Install hint: brew install ${cmd}  # macOS

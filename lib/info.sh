@@ -187,3 +187,312 @@ ctrl_set_tag() {
   yq -i "(.services[] | select(.name == \"${svc}\") | .tag) = \"${tag}\"" "${CTRL_CONFIG_FILE}"
   msg_ok "Updated ${svc} tag to '${tag}'"
 }
+
+# ── per-command help ──────────────────────────────────────────────────────────
+
+show_command_help() {
+  local cmd="${1:-}"
+  [[ -n "${cmd}" ]] || { msg_error "Usage: ctrl help <command>"; exit 1; }
+
+  case "${cmd}" in
+    build|b)
+      cat <<'EOF'
+
+ctrl build <svc|all>   (alias: ctrl b)
+
+  Compile service code locally using the configured build tool.
+  Does not touch Docker images — use 'ctrl image' after building.
+
+  ctrl.yaml fields read:
+    services[].build.tool       maven | gradle | npm | make | shell | skip
+    services[].build.dir        path to source directory (relative to ctrl.yaml)
+    services[].build.args       optional extra args passed to the build tool
+    services[].build.prerequisites  dirs to build first
+
+  Examples:
+    ctrl build api              # build the api service
+    ctrl build all              # build every service
+    ctrl b api                  # shorthand
+    ctrl --dry-run b api        # print build command without running it
+
+EOF
+      ;;
+    image|i)
+      cat <<'EOF'
+
+ctrl image <svc|all>   (alias: ctrl i)
+
+  Build a Docker image locally. Does not push to the registry.
+  Requires the code to be compiled first (ctrl build) unless build.tool is 'skip'.
+
+  ctrl.yaml fields read:
+    services[].image            image name (e.g. docker.io/myorg/api)
+    services[].tag              image tag (default: latest)
+    services[].build.dir        Docker build context
+
+  Examples:
+    ctrl image api
+    ctrl image all
+    ctrl i api
+
+EOF
+      ;;
+    push|p)
+      cat <<'EOF'
+
+ctrl push <svc|all>   (alias: ctrl p)
+
+  Push a previously built Docker image to the registry.
+
+  ctrl.yaml fields read:
+    services[].image   full image name including registry
+    services[].tag     tag to push
+
+  Examples:
+    ctrl push api
+    ctrl p all
+
+EOF
+      ;;
+    release|r)
+      cat <<'EOF'
+
+ctrl release <svc|all>   (alias: ctrl r)
+
+  Combined: build + image + push in one step.
+
+  Examples:
+    ctrl release api
+    ctrl r all
+    ctrl --dry-run r api   # preview all three steps
+
+EOF
+      ;;
+    deploy|d)
+      cat <<'EOF'
+
+ctrl deploy [target] [svc|all]   (alias: ctrl d)
+
+  Pull the latest image and restart the service on the deployment target.
+  Uses deployments.default when [target] is omitted.
+
+  ctrl.yaml fields read:
+    deployments.default                   default target
+    deployments.targets[].name            target name
+    deployments.targets[].machine         SSH machine to use
+    deployments.targets[].compose_path    path to docker-compose.yml on remote
+    services[].deploy.compose_service     compose service name (default: service name)
+    services[].deploy.depends_on          services that must be running first
+
+  Examples:
+    ctrl deploy                 # deploy all to default target
+    ctrl deploy api             # deploy api to default target
+    ctrl deploy prod api        # deploy api to prod target
+    ctrl d staging all          # deploy all to staging
+
+EOF
+      ;;
+    ssh)
+      cat <<'EOF'
+
+ctrl ssh [target] [-- cmd]
+
+  Open an interactive SSH session or run a single remote command.
+  [target] can be a machine name or deployment name.
+  Uses machines.default when omitted.
+
+  ctrl.yaml fields read:
+    machines.default              default machine
+    machines.hosts[].host         SSH host (resolved from env var)
+    machines.hosts[].user         SSH user (default: root)
+    machines.hosts[].port         SSH port (default: 22)
+    machines.hosts[].key          optional private key path
+    machines.hosts[].cwd          interactive start directory
+    deployments.targets[].cwd     deployment-specific start directory override
+
+  Examples:
+    ctrl ssh                      # interactive SSH to default machine
+    ctrl ssh prod-vm              # SSH to named machine
+    ctrl ssh prod                 # SSH to machine of prod deployment
+    ctrl ssh prod -- df -h        # run remote command
+
+EOF
+      ;;
+    remote-logs|rl)
+      cat <<'EOF'
+
+ctrl remote-logs [target] <svc> [lines]   (alias: ctrl rl)
+
+  Tail docker compose logs for a service on the remote machine.
+
+  Flags:
+    --follow   continuously stream logs (ctrl rl api --follow)
+
+  Examples:
+    ctrl rl api                   # last 200 lines for api
+    ctrl rl api 50                # last 50 lines
+    ctrl rl api --follow          # stream live
+    ctrl rl prod api --follow     # stream from prod machine
+
+EOF
+      ;;
+    health-check|hc)
+      cat <<'EOF'
+
+ctrl health-check [svc|all]   (alias: ctrl hc)
+
+  HTTP health check against each service's health URL.
+
+  ctrl.yaml fields read:
+    services[].health.port   port used to build http://localhost:<port>/actuator/health
+    services[].health.url    explicit health URL (takes precedence over port)
+
+  Examples:
+    ctrl hc                   # check all health-configured services
+    ctrl hc api               # check api only
+    ctrl --json hc            # JSON output
+
+EOF
+      ;;
+    ping)
+      cat <<'EOF'
+
+ctrl ping <svc|machine> [--n N] [--interval S]
+
+  HTTP ping a service's health endpoint, or TCP ping a machine's SSH port.
+  Only accepts names registered in ctrl.yaml.
+
+  Flags:
+    --n N          number of pings (default: 5)
+    --interval S   seconds between pings (default: 1)
+
+  Examples:
+    ctrl ping api              # 5 HTTP pings to api's health URL
+    ctrl ping api --n 10       # 10 pings
+    ctrl ping prod-vm          # TCP ping to prod-vm:22
+
+EOF
+      ;;
+    call)
+      cat <<'EOF'
+
+ctrl call <svc> <path> [--method M] [--body '{}'] [--header 'K: V']
+
+  Make an authenticated REST call against a named service.
+  Base URL is resolved from services[].health.port or services[].api.base_url.
+  Injects Authorization: Bearer $JWT_TOKEN if JWT_TOKEN is set in env.
+
+  Flags:
+    --method GET|POST|PUT|DELETE   HTTP method (default: GET)
+    --body '{...}'                 JSON request body
+    --header 'K: V'                extra header; repeatable
+
+  Examples:
+    ctrl call api /actuator/info
+    ctrl call api /users --method POST --body '{"name":"test"}'
+    ctrl call api /health --header 'X-Custom: value'
+
+EOF
+      ;;
+    probe)
+      cat <<'EOF'
+
+ctrl probe [svc|machine] [--tcp] [--http] [--port N]
+ctrl probe sniff <svc> [--filter '...'] [--duration S] [--save] [--host] [--network net] [--mount src:dst]
+ctrl probe shell [target] [--network net] [--mount src:dst] [--no-network]
+
+  Unified diagnostics command. Subcommands:
+
+  (default)  HTTP or TCP connectivity check for a named service or machine.
+  sniff      Live tcpdump via ctrl-tools container on the service's Docker network.
+             --host runs tcpdump directly on the host instead.
+             --save writes to .local/captures/<svc>-<ts>.pcap
+             With a deployment target, runs the capture on the remote machine.
+  shell      Interactive shell inside the ctrl-tools container.
+             ctrl-tools image: ghcr.io/bitboyro/ctrl-tools (pulled on demand)
+
+  Shared flags (sniff + shell):
+    --network <name|svc>   Docker network to join
+    --mount <src:dst>      bind-mount host path; repeatable
+    --no-network           isolated, no network
+
+  Examples:
+    ctrl probe api                         # HTTP probe
+    ctrl probe api --tcp                   # TCP probe
+    ctrl probe prod-vm --port 5432 --tcp   # TCP to postgres on prod-vm
+    ctrl probe sniff api                   # live tcpdump
+    ctrl probe sniff api --filter 'port 5432' --save
+    ctrl probe shell --network api         # tools shell on api's network
+    ctrl probe shell --mount ./logs:/data  # with mounted dir
+
+EOF
+      ;;
+    doctor)
+      cat <<'EOF'
+
+ctrl doctor [--install]
+
+  Pre-flight dependency check. Verifies all required and optional tools are
+  present, checks that env vars referenced in ctrl.yaml are set, and validates
+  ctrl.yaml itself.
+
+  Flags:
+    --install   auto-install any missing tools using the best available method
+                (pip if python3 detected, then brew, then apt-get, then curl)
+
+  Project tools declared in ctrl.yaml meta.tools[] are also checked:
+
+    meta:
+      tools:
+        - name: scanos
+          description: "Disk scanner"
+          install:
+            pip: scanos
+            brew: scanos
+            curl: https://github.com/bitboyro/scanos/releases/latest/download/scanos
+
+  Examples:
+    ctrl doctor
+    ctrl doctor --install
+
+EOF
+      ;;
+    diff)
+      cat <<'EOF'
+
+ctrl diff [target] [--json]
+
+  Compare declared image:tag in ctrl.yaml against what is actually running on
+  the deployment target. Shows which services are out of sync (drift).
+
+  Examples:
+    ctrl diff               # drift on default target
+    ctrl diff staging       # drift on staging
+    ctrl --json diff        # machine-readable output
+
+EOF
+      ;;
+    run)
+      cat <<'EOF'
+
+ctrl run <name> [args...]
+
+  Run a named script registered in ctrl.yaml scripts[]. Scripts receive
+  these env vars: CTRL_PROJECT, CTRL_SSH_HOST, CTRL_REGISTRY,
+  CTRL_REMOTE_DIR, CTRL_CONFIG_FILE, CTRL_MACHINE_NAME, CTRL_DEPLOY_NAME,
+  F33D_URL, F33D_TOKEN.
+
+  Examples:
+    ctrl run backup-db
+    ctrl run smoke-api -- --verbose
+
+  To create a new script: ctrl script init <name>
+
+EOF
+      ;;
+    *)
+      msg_warn "No per-command help for '${cmd}'. Try: ctrl help"
+      exit 1
+      ;;
+  esac
+}
