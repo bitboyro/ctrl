@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-25
+
+### Changed
+- `README.md` now documents `ctrl help <command>` and adds a dedicated `ctrl cp` usage section with local/remote copy examples.
+- README version examples now reference the current 0.2.x series instead of older 0.1.x snippets.
+
+### Fixed
+- `ctrl help` no longer prints the stray `CTRL_HELP_MARKER` line in top-level help output.
+- `ctrl help cp` is now supported, and `ctrl cp` is listed in the top-level help output and zsh help completion suggestions.
+
 ## [0.2.0] - 2026-05-25
 
 ### Added

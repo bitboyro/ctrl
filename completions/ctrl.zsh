@@ -63,7 +63,7 @@ _ctrl() {
           ;;
         help)
           local -a help_cmds
-          help_cmds=(build image push release deploy redeploy sync ssh remote-logs remote-status env health-check wait-ready smoke-test run probe ping call doctor diff tag)
+          help_cmds=(build image push release deploy redeploy sync ssh remote-logs remote-status env health-check wait-ready smoke-test run probe ping call doctor diff tag cp)
           _values 'command' "${help_cmds[@]}"
           ;;
         completion)

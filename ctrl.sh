@@ -126,9 +126,6 @@ case "${1:-}" in
       _CTRL_HELP_CMD="${_help_cmd}"
       _CTRL_HELP_MODE=1
     else
-    cat <<'HELPEOF'
-CTRL_HELP_MARKER
-HELPEOF
     _ver_line="ctrl v${CTRL_VERSION} — YAML-driven platform operations CLI"
     cat <<EOF
 ${_ver_line}
@@ -183,6 +180,7 @@ Diagnostics:
   probe sniff    <svc>               Live tcpdump via ctrl-tools container
   probe shell                        Interactive ctrl-tools container shell
   doctor         [--install]         Pre-flight dep check with install hints
+  cp             <src> <dst>         Copy files locally or via named machines
 
 Config & info:
   init                               Interactive wizard — generate ctrl.yaml

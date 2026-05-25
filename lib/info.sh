@@ -457,6 +457,36 @@ ctrl doctor [--install]
 
 EOF
       ;;
+    cp)
+      cat <<'EOF'
+
+ctrl cp [--exclude PAT]... [--delete] [--progress|-P] <src> <dst>
+
+  Copy files or directories with rsync between local paths and named machines
+  declared in ctrl.yaml machines.hosts[].
+
+  Endpoint format:
+    ./path/to/file        local path
+    machine-name:/path    remote path on a named machine
+
+  Supported flows:
+    local  -> local
+    local  -> remote
+    remote -> local
+    remote -> remote      via a temporary local bounce directory
+
+  Flags:
+    --exclude PAT   exclude path pattern; repeatable
+    --delete        delete files at destination that are not present at source
+    --progress, -P  show rsync progress output
+
+  Examples:
+    ctrl cp ./build/api.jar prod:/srv/api/
+    ctrl cp prod:/var/log/app.log ./tmp/app.log
+    ctrl cp --exclude node_modules ./site/ prod:/srv/site/
+
+EOF
+      ;;
     diff)
       cat <<'EOF'
 

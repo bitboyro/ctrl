@@ -60,7 +60,7 @@ ctrl completion zsh > "${fpath[1]}/_ctrl"
 
 ```yaml
 ctrl:
-  version: "0.1.1"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.2.1"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -304,6 +304,17 @@ ctrl default staging    # auto-detects machine vs deployment
 | `--config <path>` | | Override `ctrl.yaml` location |
 | `--follow` | | Tail logs (with `rl`) |
 
+## Help
+
+Use the built-in help when you need the exact flags, config fields, or examples
+for a single command:
+
+```bash
+ctrl help                 # top-level grouped help
+ctrl help deploy          # command-specific help
+ctrl help cp              # copy command help with examples
+```
+
 ## MCP server
 
 ctrl exposes itself as an MCP server over stdin/stdout for use with Claude or any MCP client:
@@ -332,14 +343,14 @@ Available tools: `list_services`, `list_machines`, `build_service`, `deploy_serv
 
 ```yaml
 ctrl:
-  version: "0.1.1"
+  version: "0.2.1"
 ```
 
 `ctrl check` warns when the running ctrl version doesn't match the declared
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.1.1     # specific version
+./install.sh v0.2.1     # specific version
 ./install.sh            # latest from main
 ```
 
@@ -357,6 +368,18 @@ otherwise:
 ctrl history        # last 20 entries (shorthand: ctrl h)
 ctrl history 50
 ```
+
+## File copy
+
+```bash
+ctrl cp ./build/api.jar prod:/srv/api/          # local -> remote
+ctrl cp prod:/var/log/app.log ./tmp/app.log     # remote -> local
+ctrl cp --exclude node_modules ./site/ prod:/srv/site/
+```
+
+`ctrl cp` uses `rsync` semantics for local/local, local/remote, remote/local,
+and remote/remote transfers. Remote endpoints use `machine-name:/path` and
+reuse the SSH settings from `machines.hosts[]` in `ctrl.yaml`.
 
 ## Diagnostics
 
@@ -439,7 +462,7 @@ Verify `machines.hosts[].key` resolves correctly: `ctrl info prod-vm`. Ensure th
 
 **ctrl.yaml version mismatch**
 ```
-warn  ctrl version (0.1.2) differs from ctrl.version declared in ctrl.yaml (0.1.1)
+warn  ctrl version (0.2.1) differs from ctrl.version declared in ctrl.yaml (0.2.0)
 ```
 Update `ctrl.version` in `ctrl.yaml` to match `ctrl version`, or upgrade ctrl.
 
