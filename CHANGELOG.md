@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-25
+
+### Changed
+- `README.md` now clarifies that packet capture is exposed as `ctrl probe sniff`, not as standalone `ctrl sniff` / `ctrl capture`, and removes wording that implied remote captures are pulled back automatically.
+
+### Fixed
+- `dist/ctrl` now bundles `lib/cp.sh`, so packaged installs correctly provide the `ctrl cp` command instead of failing with `ctrl_cp: command not found`.
+
+### Added
+- Smoke coverage for the packaged `ctrl cp` command to prevent bundling regressions in `dist/ctrl`.
+
 ## [0.2.1] - 2026-05-25
 
 ### Changed

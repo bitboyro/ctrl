@@ -7,7 +7,7 @@ OUT_DIR="${CTRL_DIR}/dist"
 OUT="${OUT_DIR}/ctrl"
 VERSION="$(cat "${CTRL_DIR}/VERSION" 2>/dev/null || echo "unknown")"
 
-LIBS=(core services deploy remote health audit ext gitlab templates init check info mcp probe doctor)
+LIBS=(core services deploy remote health audit ext gitlab templates init check info mcp probe doctor cp)
 
 mkdir -p "${OUT_DIR}"
 

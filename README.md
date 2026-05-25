@@ -383,6 +383,9 @@ reuse the SSH settings from `machines.hosts[]` in `ctrl.yaml`.
 
 ## Diagnostics
 
+Packet capture is exposed as `ctrl probe sniff`. There is no standalone
+`ctrl sniff`, `ctrl capture`, or `ctrl bench` command in the current release.
+
 ```bash
 ctrl ping api                          # HTTP ping api's health URL (5 times, with latency)
 ctrl ping api --n 10                   # 10 pings
@@ -398,7 +401,7 @@ ctrl probe prod-vm --port 5432 --tcp   # check postgres port on a machine
 
 ctrl probe sniff api                   # live tcpdump via ctrl-tools container
 ctrl probe sniff api --filter 'port 5432' --save  # save to .local/captures/
-ctrl probe sniff prod api --duration 60 --save    # remote capture, pull pcap back
+ctrl probe sniff prod api --duration 60           # run capture on remote target
 ctrl probe sniff api --host            # tcpdump on host machine instead of container
 
 ctrl probe shell                       # interactive ctrl-tools shell

@@ -98,6 +98,15 @@ teardown() { teardown_test_dir; }
   [[ "${output}" == *"deploy"* ]] || { echo "help deploy output missing 'deploy'"; return 1; }
 }
 
+@test "dist/ctrl cp copies a local file" {
+  write_fixture_yaml
+  echo "hello" > "${TEST_TMP}/src.txt"
+  run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" cp "${TEST_TMP}/src.txt" "${TEST_TMP}/dst.txt"
+  [[ "${status}" -eq 0 ]] || { echo "${output}"; return 1; }
+  [[ -f "${TEST_TMP}/dst.txt" ]] || { echo "destination file missing"; return 1; }
+  [[ "$(cat "${TEST_TMP}/dst.txt")" == "hello" ]]
+}
+
 @test "dist/ctrl ping with unknown name exits non-zero with clear message" {
   write_fixture_yaml
   run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" ping no-such-service
