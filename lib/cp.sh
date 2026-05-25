@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ── ctrl cp ──────────────────────────────────────────────────────────────────
 # Flexible file/folder copy between local and any named machine in ctrl.yaml.
 # Always uses rsync for consistent semantics (progress, exclude, delete, resume).

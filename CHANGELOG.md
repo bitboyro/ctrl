@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-25
+
 ### Added
 - `ctrl ping <svc|machine>` — HTTP ping a service's health URL or TCP ping a machine, with per-request latency and min/avg/max/loss summary. Only accepts names registered in `ctrl.yaml`.
 - `ctrl call <svc> <path>` — authenticated REST call against a named service. Base URL resolved from `health.port` or `api.base_url`. Injects `Authorization: Bearer $JWT_TOKEN` if set. Flags: `--method`, `--body`, `--header`.
@@ -19,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `lib/probe.sh` — implementation for `ctrl ping`, `ctrl call`, `ctrl probe`.
 - `lib/doctor.sh` — implementation for `ctrl doctor`.
 - `completions/ctrl.bash` and `completions/ctrl.zsh` — shell completion scripts.
+- `ctrl cp` — copy files and directories between local paths and named machines from `ctrl.yaml` using `rsync`. Supports local-to-local, local-to-remote, remote-to-local, and remote-to-remote transfers, plus `--exclude`, `--delete`, and `--progress` flags. Remote transfers reuse the configured SSH machine settings, and remote-to-remote copies are performed via a temporary local bounce.
 
 ### Changed
 - `ctrl help` rewritten: quick-start block at top, per-group examples inline, consistent column alignment, deps line at the bottom (`ctrl doctor` hint).
@@ -27,7 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `SKILL.md` — added Constraints section documenting the ctrl-first rule for all three personas.
 - `README.md` — added Shell completion, Diagnostics, Workflows, and Troubleshooting sections; updated deps table with new entries.
 
-- `ctrl cp` — copy files and directories between local paths and named machines from `ctrl.yaml` using `rsync`. Supports local-to-local, local-to-remote, remote-to-local, and remote-to-remote transfers, plus `--exclude`, `--delete`, and `--progress` flags. Remote transfers reuse the configured SSH machine settings, and remote-to-remote copies are performed via a temporary local bounce.
+### Fixed
+- ShellCheck cleanup for release packaging and CI: `lib/cp.sh` now declares Bash explicitly, and `lib/doctor.sh` no longer keeps an unused `ctrl_check` capture.
 
 ## [0.1.2] - 2026-05-20
 

@@ -45,8 +45,7 @@ ctrl_doctor() {
   # ctrl.yaml validity
   echo ""
   printf '  %s%-16s%s ' "${BOLD}" "ctrl.yaml" "${RESET}"
-  local check_out
-  if check_out="$(ctrl_check 2>&1)"; then
+  if ctrl_check >/dev/null 2>&1; then
     printf '%s%-8s%s\n' "${GREEN}" "ok" "${RESET}"
   else
     printf '%s%-8s%s %s\n' "${RED}" "invalid" "${RESET}" "run 'ctrl check' for details"
