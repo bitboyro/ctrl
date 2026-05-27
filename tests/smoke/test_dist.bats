@@ -107,6 +107,19 @@ teardown() { teardown_test_dir; }
   [[ "$(cat "${TEST_TMP}/dst.txt")" == "hello" ]]
 }
 
+@test "dist/ctrl redeploy dry-run does not crash with top-level local error" {
+  write_fixture_yaml
+  mkdir -p "${TEST_TMP}/svc"
+  cat > "${TEST_TMP}/svc/Dockerfile" <<'EOF'
+FROM scratch
+EOF
+  yq -i '.services = [{"name":"api","image":"docker.io/test/api","tag":"latest","build":{"tool":"skip","dir":"svc"}}]' "${TEST_TMP}/ctrl.yaml"
+
+  run env CTRL_CONFIG="${CTRL_CONFIG}" DOCKERHUB_USERNAME=test DOCKERHUB_PASSWORD=test "${DIST_CTRL}" --dry-run rd api
+  [[ "${status}" -eq 0 ]] || { echo "${output}"; return 1; }
+  [[ "${output}" != *"local: can only be used in a function"* ]] || { echo "unexpected top-level local error"; return 1; }
+}
+
 @test "dist/ctrl ping with unknown name exits non-zero with clear message" {
   write_fixture_yaml
   run env CTRL_CONFIG="${CTRL_CONFIG}" "${DIST_CTRL}" ping no-such-service

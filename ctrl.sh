@@ -303,7 +303,6 @@ case "${CMD}" in
   # ── deploy ───────────────────────────────────────────────────────────────
   deploy|d)
     _resolve_target_and_services "$@"
-    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
@@ -316,7 +315,6 @@ case "${CMD}" in
   # ── redeploy ─────────────────────────────────────────────────────────────
   redeploy|rd)
     _resolve_target_and_services "$@"
-    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
@@ -330,7 +328,6 @@ case "${CMD}" in
   # ── sync-deploy ──────────────────────────────────────────────────────────
   sync-deploy|sd)
     _resolve_target_and_services "$@"
-    local _svc_out
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else

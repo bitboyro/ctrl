@@ -5,7 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-05-25
+### Fixed
+- `ctrl deploy`, `ctrl redeploy`, and `ctrl sync-deploy` no longer crash with `local: can only be used in a function` when run from the packaged CLI. The dispatcher no longer declares `local` variables at top level, and smoke coverage now exercises bundled `redeploy` in dry-run mode.
+
+## [0.2.4] - 2026-05-27
+
+### Changed
+- Bump version to 0.2.4 for release.
+
+## [0.2.3] - 2026-05-25
 
 ### Changed
 - `README.md` now clarifies that packet capture is exposed as `ctrl probe sniff`, not as standalone `ctrl sniff` / `ctrl capture`, and removes wording that implied remote captures are pulled back automatically.
