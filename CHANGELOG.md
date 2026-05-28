@@ -5,8 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Fixed
-- `ctrl deploy`, `ctrl redeploy`, and `ctrl sync-deploy` no longer crash with `local: can only be used in a function` when run from the packaged CLI. The dispatcher no longer declares `local` variables at top level, and smoke coverage now exercises bundled `redeploy` in dry-run mode.
+## [0.2.5] - 2026-05-27
+
+### Added
+- `machines.hosts[].remote_dir` — sets the working directory used by `ctrl rs`, `ctrl rl`, and `ctrl env` when a machine is resolved directly (without a deployment context).
+- `deployments.targets[].remote_dir` — explicit working directory override for a deployment target, taking priority over the directory derived from `compose_path`.
+- `CTRL_META_REMOTE_DIR` env var is now respected as a fallback default; previously it was always overwritten by the hardcoded `/opt/app`.
+
+### Changed
+- Remote working directory resolution now follows a strict priority order: `deployment.remote_dir` → `dirname(compose_path)` → `machine.remote_dir` → `$CTRL_META_REMOTE_DIR` env var → `/opt/app` default.
 
 ## [0.2.4] - 2026-05-27
 

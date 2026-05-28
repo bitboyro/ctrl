@@ -60,7 +60,7 @@ ctrl completion zsh > "${fpath[1]}/_ctrl"
 
 ```yaml
 ctrl:
-  version: "0.2.4"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.2.5"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -77,6 +77,7 @@ machines:
       user: root
       port: 22
       cwd: /root                     # optional interactive SSH start dir for `ctrl ssh prod-vm`
+      remote_dir: /opt/my-platform  # optional — working dir for rs/rl/env when resolving this machine directly
       # password: "${VM_PASSWORD}"  # optional — requires sshpass
 
 services:
@@ -114,7 +115,8 @@ deployments:
     - name: prod
       machine: prod-vm
       compose_path: /opt/my-platform/docker-compose.yml
-      # cwd: /opt/my-platform        # optional override for `ctrl ssh prod`
+      # remote_dir: /opt/my-platform  # optional — overrides dirname(compose_path) for rs/rl/env
+      # cwd: /opt/my-platform         # optional override for `ctrl ssh prod`
       sync:
         paths:
           - deploy/docker-compose.yml
@@ -181,6 +183,18 @@ deployments:
 - `machines.hosts[].cwd` sets the default interactive start dir for `ctrl ssh <machine>`.
 - `deployments.targets[].cwd` overrides that for `ctrl ssh <deployment>`.
 - Compose-driven commands such as `ctrl deploy`, `ctrl rs`, `ctrl rl`, and `ctrl env` still use `dirname(compose_path)`.
+
+### Remote working directory
+
+`ctrl rs`, `ctrl rl`, `ctrl env`, and `ctrl deploy` all `cd` into a resolved remote working directory before running Docker Compose. Resolution order (first match wins):
+
+1. `deployments.targets[].remote_dir` — explicit override on the deployment target
+2. `dirname(deployments.targets[].compose_path)` — derived automatically when `compose_path` is set
+3. `machines.hosts[].remote_dir` — used when resolving a machine directly (no deployment context)
+4. `$CTRL_META_REMOTE_DIR` env var — process-level override
+5. `/opt/app` — hardcoded default
+
+In most setups `compose_path` is enough. Set `remote_dir` on a machine when `ctrl rs` / `ctrl rl` should work correctly even without going through a named deployment target.
 
 ## Build pipeline
 
@@ -350,7 +364,7 @@ ctrl:
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.2.4     # specific version
+./install.sh v0.2.5     # specific version
 ./install.sh            # latest from main
 ```
 
@@ -465,7 +479,7 @@ Verify `machines.hosts[].key` resolves correctly: `ctrl info prod-vm`. Ensure th
 
 **ctrl.yaml version mismatch**
 ```
-warn  ctrl version (0.2.4) differs from ctrl.version declared in ctrl.yaml (0.2.2)
+warn  ctrl version (0.2.5) differs from ctrl.version declared in ctrl.yaml (0.2.4)
 ```
 Update `ctrl.version` in `ctrl.yaml` to match `ctrl version`, or upgrade ctrl.
 

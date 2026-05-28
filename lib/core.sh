@@ -67,7 +67,7 @@ CTRL_META_SSH_CWD=""
 # shellcheck disable=SC2034
 CTRL_META_COMPOSE_PATH="/opt/app/docker-compose.yml"
 # shellcheck disable=SC2034
-CTRL_META_REMOTE_DIR="/opt/app"
+CTRL_META_REMOTE_DIR="${CTRL_META_REMOTE_DIR:-/opt/app}"
 # shellcheck disable=SC2034
 CTRL_MACHINE_NAME=""
 CTRL_SSHPASS_CMD="${CTRL_SSHPASS_CMD:-sshpass}"
@@ -173,6 +173,10 @@ resolve_machine() {
   # shellcheck disable=SC2034
   CTRL_META_SSH_CWD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .cwd // \"\"")")"
   export CTRL_META_SSH_PASSWORD
+  local machine_remote_dir
+  machine_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .remote_dir // \"\"")")"
+  # shellcheck disable=SC2034
+  [[ -n "${machine_remote_dir}" && "${machine_remote_dir}" != "null" ]] && CTRL_META_REMOTE_DIR="${machine_remote_dir}"
   # shellcheck disable=SC2034
   CTRL_MACHINE_NAME="${name}"
 

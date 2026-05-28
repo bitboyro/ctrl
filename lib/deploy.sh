@@ -54,6 +54,11 @@ resolve_deployment() {
     CTRL_META_COMPOSE_PATH="${t_compose}"
     CTRL_META_REMOTE_DIR="$(dirname "${t_compose}")"
   fi
+  local t_remote_dir
+  t_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .remote_dir // \"\"")")"
+  # shellcheck disable=SC2034
+  [[ -n "${t_remote_dir}" && "${t_remote_dir}" != "null" ]] && CTRL_META_REMOTE_DIR="${t_remote_dir}"
+
   if [[ -n "${t_cwd}" && "${t_cwd}" != "null" ]]; then
     CTRL_META_SSH_CWD="${t_cwd}"
   elif [[ -z "${CTRL_META_SSH_CWD}" && -n "${t_compose}" && "${t_compose}" != "null" ]]; then

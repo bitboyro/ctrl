@@ -85,6 +85,7 @@ machines:
       user: root
       port: 22               # optional, default 22
       key: "${SSH_KEY}"      # optional
+      remote_dir: /opt/app   # optional — working dir for rs/rl/env when resolving this machine directly
 
     - name: bastion
       host: "${BASTION_HOST}"
@@ -160,6 +161,7 @@ deployments:
     - name: prod
       machine: prod-vm       # references machines.hosts[].name
       compose_path: /opt/my-platform/docker-compose.yml
+      # remote_dir: /opt/my-platform  # optional — overrides dirname(compose_path) for rs/rl/env
       sync:
         paths:
           - deploy/docker-compose.yml
