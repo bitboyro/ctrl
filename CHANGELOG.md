@@ -5,11 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-06-18
+## [0.3.0] - 2026-06-20
 
 ### Added
 - `ctrl copy-run <name> [target]` (alias: `ctrl cpr`) — pipe a named script to the remote host via SSH and run it there. Injects the same `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR` env vars as `ctrl run`. Nothing is left on the remote — the script is streamed via `bash -s`. Supports dry-run, password auth, and optional deployment target as second arg.
 - `requires` block on `scripts[]` entries in `ctrl.yaml` — declare `tools` and `env` that must be present before a script executes. `ctrl run` checks them on the local host; `ctrl cpr` injects a self-contained preamble that checks them on the remote host before the script body runs. Scripts without a `requires` block are unaffected.
+- 61 new bats tests across six new unit test files: `test_resolve_services`, `test_service_accessors`, `test_check_invalid`, `test_tag_and_default`, `test_health_check` (curl mocked via PATH injection), and `test_requires`. Total test count: 151.
+
+### Removed
+- Autonomous agent harness subsystem — `lib/harness.sh`, `lib/heartbeat.sh`, `lib/observer.sh`, `lib/loop.sh` (1711 lines), all agent persona definitions (`agents/`), and all harness/heartbeat MCP tool entries. ctrl is a pure utility tool for humans and agents; it no longer controls agents, spawns skills, or runs background loops.
+
+### Changed
+- `SKILL.md` rewritten as a grouped, usage-oriented reference covering every ctrl command with bash examples — previously only listed a subset of commands.
+- `backlog.md` added at project root — 37 security and correctness findings catalogued by severity (CRITICAL → LOW).
 
 ## [0.2.5] - 2026-05-27
 

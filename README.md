@@ -60,7 +60,7 @@ ctrl completion zsh > "${fpath[1]}/_ctrl"
 
 ```yaml
 ctrl:
-  version: "0.2.5"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.3.0"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -372,14 +372,14 @@ Register in Claude Desktop:
 
 ```yaml
 ctrl:
-  version: "0.2.4"
+  version: "0.3.0"
 ```
 
 `ctrl check` warns when the running ctrl version doesn't match the declared
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.2.5     # specific version
+./install.sh v0.3.0     # specific version
 ./install.sh            # latest from main
 ```
 
@@ -494,7 +494,7 @@ Verify `machines.hosts[].key` resolves correctly: `ctrl info prod-vm`. Ensure th
 
 **ctrl.yaml version mismatch**
 ```
-warn  ctrl version (0.2.5) differs from ctrl.version declared in ctrl.yaml (0.2.4)
+warn  ctrl version (0.3.0) differs from ctrl.version declared in ctrl.yaml (0.2.5)
 ```
 Update `ctrl.version` in `ctrl.yaml` to match `ctrl version`, or upgrade ctrl.
 
