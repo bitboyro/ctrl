@@ -244,7 +244,9 @@ ctrl smoke-test api     # run smoke_tests scripts for a service (shorthand: ctrl
 
 ```bash
 ctrl script init backup-db      # create scripts/backup-db.sh + register in ctrl.yaml
-ctrl run backup-db              # run a named script
+ctrl run backup-db              # run a named script locally
+ctrl cpr backup-db              # pipe script to remote and run it there (shorthand for copy-run)
+ctrl cpr backup-db staging      # run on a named deployment target
 ctrl scripts                    # list scripts (shorthand: ctrl sc)
 ctrl scripts --tag deploy       # filter by tag
 ```
@@ -329,6 +331,19 @@ ctrl help deploy          # command-specific help
 ctrl help cp              # copy command help with examples
 ```
 
+
+## Upgrade
+
+```bash
+ctrl upgrade
+```
+
+Fetches the latest VERSION from GitHub, renders an ANSI-colored CHANGELOG diff between your
+current version and the new one (green for Added, red for Breaking, yellow for Changed/Fixed),
+then replaces the binary atomically after confirmation.
+
+Use `CTRL_DRY_RUN=1 ctrl upgrade` to preview the changelog without replacing the binary.
+
 ## MCP server
 
 ctrl exposes itself as an MCP server over stdin/stdout for use with Claude or any MCP client:
@@ -346,7 +361,7 @@ Register in Claude Desktop:
 }
 ```
 
-Available tools: `list_services`, `list_machines`, `build_service`, `deploy_service`,
+**Tools:** `list_services`, `list_machines`, `build_service`, `deploy_service`,
 `release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`,
 `check_config`, `update_tag`, `get_history`
 

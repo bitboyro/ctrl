@@ -16,7 +16,7 @@ _ctrl() {
     deploy d redeploy rd sync s sync-deploy sd
     ssh remote-status rs remote-logs rl env e
     health-check hc wait-ready wr smoke-test st
-    run script scripts sc
+    run copy-run cpr script scripts sc
     ping call probe
     doctor
     init check c list ls info machines m diff tag t default history h
@@ -58,7 +58,7 @@ _ctrl() {
       local machines; machines="$(ctrl machines --json 2>/dev/null | command jq -r '.[].name' 2>/dev/null || true)"
       COMPREPLY=( $(compgen -W "${machines}" -- "${cur}") )
       ;;
-    run)
+    run|copy-run|cpr)
       local scripts; scripts="$(ctrl scripts --json 2>/dev/null | command jq -r '.[].name' 2>/dev/null || true)"
       COMPREPLY=( $(compgen -W "${scripts}" -- "${cur}") )
       ;;

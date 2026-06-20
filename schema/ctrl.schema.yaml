@@ -67,6 +67,11 @@ scripts:                   # optional — named runnable scripts
   - name: string           # unique identifier
     path: string           # path to script relative to ctrl.yaml
     description: string    # optional — shown in ctrl sc
+    requires:              # optional — pre-flight assertions enforced before execution
+      tools:               # command names that must exist on the host (ctrl run: local, ctrl cpr: remote)
+        - string
+      env:                 # env var names that must be set and non-empty
+        - string
     hooks:
       pre:                 # scripts to run before this script
         - string

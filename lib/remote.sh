@@ -15,6 +15,11 @@ open_ssh() {
 
   local -a flags=(-t -p "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && flags+=(-i "${CTRL_META_SSH_KEY}")
+  # Normalize exotic terminals (e.g. xterm-ghostty) that remote hosts won't have in terminfo
+  case "${TERM:-}" in
+    xterm-ghostty|*-ghostty|foot|wezterm|alacritty)
+      flags+=(-o "SetEnv TERM=xterm-256color") ;;
+  esac
 
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
     has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"

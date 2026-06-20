@@ -38,6 +38,7 @@ source "${CTRL_SELF_DIR}/lib/cp.sh"
 source "${CTRL_SELF_DIR}/lib/probe.sh"
 source "${CTRL_SELF_DIR}/lib/doctor.sh"
 
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 run_for_each() {
   local action="$1"; shift
@@ -169,7 +170,8 @@ Health & tests:
   st / smoke-test   [svc|all]        Run smoke tests
 
 Scripts:
-  run            <name> [args]       Run a named script
+  run            <name> [args]       Run a named script locally
+  cpr / copy-run <name> [target]     Pipe script to remote and run it there
   script init    <name>              Create script from template + register
   sc / scripts                       List scripts
 
@@ -194,6 +196,7 @@ Config & info:
   h  / history  [n]                  Last n journal entries (default 20)
   mcp                                Start stdio MCP server (JSON-RPC 2.0)
   completion    <bash|zsh>           Print shell completion script
+  upgrade                            Upgrade ctrl to latest release
 
 Global flags:
   -n  --dry-run        Print commands, no execution
@@ -224,6 +227,14 @@ if [[ "${1:-}" == "init" ]]; then
   ctrl_init
   exit 0
 fi
+
+
+# ── upgrade (no config needed) ────────────────────────────────────────────────
+if [[ "${1:-}" == "upgrade" ]]; then
+  ctrl_upgrade
+  exit 0
+fi
+
 
 # ── commands that need config ─────────────────────────────────────────────────
 load_config
@@ -406,6 +417,18 @@ case "${CMD}" in
     with_journal "run" "${_script_name}" run_script "${_script_name}" "$@"
     ;;
 
+  # ── copy-run script on remote ─────────────────────────────────────────────
+  copy-run|cpr)
+    [[ "$#" -ge 1 ]] || fail "Usage: ctrl cpr <name> [target]"
+    _script_name="$1"; shift
+    if [[ "$#" -gt 0 ]] && is_deployment_target "$1"; then
+      resolve_deployment "$1"; shift
+    else
+      resolve_deployment ""
+    fi
+    with_journal "copy-run" "${_script_name}" copy_run_script "${_script_name}"
+    ;;
+
   # ── script subcommands ───────────────────────────────────────────────────
   script)
     case "${1:-}" in
@@ -506,6 +529,12 @@ case "${CMD}" in
   doctor)
     ctrl_doctor "$@"
     ;;
+
+  # ── upgrade ──────────────────────────────────────────────────────────────
+  upgrade)
+    ctrl_upgrade
+    ;;
+
 
   # ── extension commands ────────────────────────────────────────────────────
   *)

@@ -251,50 +251,112 @@ The generated script receives: `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`,
 
 ## Commands reference
 
-Shorthand aliases shown after `/`. Config/query commands have no shorthand.
+Shorthand aliases shown after `/`.
 
-```
-ctrl list   / ls                        list services with kind and image:tag
-ctrl build  / b    <svc|all>            build code locally
-ctrl image  / i    <svc|all>            docker build (no push)
-ctrl push   / p    <svc|all>            docker push
-ctrl release/ r    <svc|all>            build + image + push
-ctrl sync   / s    [target]             rsync files to deployment target
-ctrl deploy / d    [target] [svc|all]   pull + start on target (default: all)
-ctrl redeploy/rd   [target] [svc|all]   release + deploy
-ctrl sync-deploy/sd [target] [svc|all]  sync + deploy
-ctrl ssh           [target] [cmd]       interactive SSH or run command
-ctrl remote-status/rs [target] [svc]   docker compose ps
-ctrl remote-logs/rl   [target] <svc> [n] docker compose logs (--follow to tail)
-ctrl env    / e    [target] <svc>       show env of running container
-ctrl health-check/hc [svc|all]         health check
-ctrl wait-ready/wr <svc> [timeout]     wait until healthy
-ctrl smoke-test/st [svc|all]           run smoke tests
-ctrl run           <name> [args]       run a named script
-ctrl script        init <name>         create script from template + register
-ctrl scripts/ sc                       list scripts
-ctrl machines/ m                       list machines
-ctrl diff          [target] [--json]   declared vs running image:tag (drift)
-ctrl info          [machine|svc]       project / machine / service detail
-ctrl check  / c    [--json]            validate ctrl.yaml
-ctrl tag    / t    <svc> <tag>         update tag in ctrl.yaml in-place
-ctrl default       <name>             set machines.default or deployments.default
-ctrl history/ h    [n]                last n audit journal entries (default 20)
-ctrl init                              interactive wizard — generate ctrl.yaml
-ctrl mcp                               start stdio MCP server (JSON-RPC 2.0)
-ctrl version                           print ctrl version
-```
-
-Global flags: `--dry-run` (`-n`), `--verbose` (`-v`), `--json`, `--config <path>`, `--follow`
-
-`--json` is supported by: `list`, `hc`, `info`, `diff`, `check`, `sc`, `machines`
-
-## MCP server
-
-ctrl exposes itself as an MCP server over stdin/stdout:
+### Build pipeline
 
 ```bash
-ctrl mcp   # start MCP server, register in your IDE/agent config
+ctrl build  / b    <svc|all>            # compile code locally (maven/gradle/npm/make/shell)
+ctrl image  / i    <svc|all>            # docker build, no push
+ctrl push   / p    <svc|all>            # docker push to registry
+ctrl release/ r    <svc|all>            # build + image + push in one step
+```
+
+### Deploy pipeline
+
+```bash
+ctrl sync   / s    [target]             # rsync declared sync.paths to deployment target
+ctrl deploy / d    [target] [svc|all]   # docker compose pull + up on target
+ctrl redeploy/rd   [target] [svc|all]   # release + deploy
+ctrl sync-deploy/sd [target] [svc|all]  # sync + deploy
+```
+
+`[target]` is a deployment name (e.g. `staging`) or omitted to use `deployments.default`.
+
+### Remote access
+
+```bash
+ctrl ssh           [target] [-- cmd]    # interactive SSH or run a remote command
+ctrl rs / remote-status [target] [svc]  # docker compose ps
+ctrl rl / remote-logs   [target] <svc>  # docker compose logs (--follow to tail)
+ctrl e  / env      [target] <svc>       # show env vars of running container
+```
+
+### Health & smoke tests
+
+```bash
+ctrl hc / health-check [svc|all]        # HTTP/TCP health check against health.port or health.url
+ctrl wr / wait-ready   <svc> [timeout]  # poll until healthy; timeout in seconds (default 60)
+ctrl st / smoke-test   [svc|all]        # run smoke_tests scripts for a service
+```
+
+### Scripts
+
+```bash
+ctrl run           <name> [args]        # run a named script locally with platform env vars injected
+ctrl cpr / copy-run <name> [target]     # pipe script to remote machine and run it there
+ctrl script init   <name>              # create scripts/<name>.sh from template + register in ctrl.yaml
+ctrl sc / scripts  [--tag <tag>]        # list scripts; optionally filter by tag
+```
+
+Scripts receive: `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR`,
+`CTRL_CONFIG_FILE`, `CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`, `F33D_URL`, `F33D_TOKEN`.
+
+### Diagnostics
+
+```bash
+ctrl ping  <svc|machine>               # HTTP ping (5×) with latency stats; TCP ping for machines
+ctrl ping  <svc> --n 10                # custom count
+ctrl call  <svc> <path>                # authenticated GET against service health base URL
+ctrl call  <svc> <path> --method POST --body '{...}'
+# JWT_TOKEN env var injected automatically if set
+
+ctrl probe [svc] [--tcp]               # HTTP or TCP connectivity check
+ctrl probe <svc> --port 5432 --tcp     # check a specific port
+ctrl probe sniff <svc>                 # live tcpdump via ctrl-tools container
+ctrl probe sniff <svc> --filter 'port 5432' --save  # save capture to .local/captures/
+ctrl probe sniff <target> <svc> --duration 60       # capture on remote target
+ctrl probe sniff <svc> --host          # tcpdump on host instead of container
+ctrl probe shell                       # interactive ctrl-tools container shell
+ctrl probe shell --network <svc>       # joined to service's Docker network
+ctrl probe shell --mount ./logs:/data  # with a host dir mounted
+
+ctrl doctor                            # check all deps; show install hints
+ctrl doctor --install                  # auto-install missing deps
+```
+
+`ctrl probe sniff` and `ctrl probe shell` use the `ghcr.io/bitboyro/ctrl-tools` image (pulled on demand).
+
+### File copy
+
+```bash
+ctrl cp <src> <dst>                    # rsync-based file copy
+ctrl cp ./build/api.jar prod:/srv/api/ # local → remote (machine-name:/path)
+ctrl cp prod:/var/log/app.log ./tmp/   # remote → local
+ctrl cp --exclude node_modules ./site/ prod:/srv/site/
+```
+
+### Config & info
+
+```bash
+ctrl init                              # interactive wizard — generate ctrl.yaml
+ctrl c  / check    [--json]            # validate ctrl.yaml structure and file references
+ctrl ls / list     [--json]            # list all services with kind + image:tag
+ctrl info          [machine|svc]       # project summary, or detail for a machine/service
+ctrl m  / machines [--json]            # list machines with deployment count
+ctrl diff          [target] [--json]   # declared image:tag vs running containers (drift)
+ctrl t  / tag      <svc> <newtag>      # update service tag in ctrl.yaml in-place
+ctrl default       <name>              # set deployments.default or machines.default in ctrl.yaml
+ctrl h  / history  [n]                 # last n audit journal entries (default 20)
+ctrl version                           # print ctrl version
+ctrl upgrade                           # fetch latest, show changelog diff, replace binary
+ctrl completion    <bash|zsh>          # print shell completion script
+```
+
+### MCP server
+
+```bash
+ctrl mcp                               # start stdio MCP server (JSON-RPC 2.0)
 ```
 
 Register in Claude Desktop or any MCP client:
@@ -306,7 +368,19 @@ Register in Claude Desktop or any MCP client:
 }
 ```
 
-Available tools: `list_services`, `list_machines`, `build_service`, `deploy_service`, `release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`, `check_config`, `update_tag`, `get_history`
+MCP tools: `list_services`, `list_machines`, `build_service`, `deploy_service`,
+`release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`,
+`check_config`, `update_tag`, `get_history`
+
+### Global flags
+
+| Flag | Short | Effect |
+|------|-------|--------|
+| `--dry-run` | `-n` | Print commands, no execution |
+| `--verbose` | `-v` | Extra debug output |
+| `--json` | | JSON output (`list`, `hc`, `info`, `diff`, `check`, `sc`, `machines`) |
+| `--config <path>` | | Override ctrl.yaml location |
+| `--follow` | | Tail logs (with `rl`) |
 
 ## Versioning
 

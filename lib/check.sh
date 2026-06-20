@@ -91,6 +91,23 @@ ctrl_check() {
     else
       errors+=("script '${sname}': missing path")
     fi
+
+    # requires.tools — entries must not contain whitespace
+    local rtool
+    while IFS= read -r rtool; do
+      [[ -z "${rtool}" || "${rtool}" == "null" ]] && continue
+      [[ "${rtool}" =~ [[:space:]] ]] && \
+        warnings+=("script '${sname}': requires.tools entry contains whitespace: '${rtool}'")
+    done < <(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${sname}\") | .requires.tools[]? // \"\"" 2>/dev/null || true)
+
+    # requires.env — entries must be valid shell variable names
+    local renv
+    while IFS= read -r renv; do
+      [[ -z "${renv}" || "${renv}" == "null" ]] && continue
+      [[ "${renv}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || \
+        errors+=("script '${sname}': requires.env entry is not a valid variable name: '${renv}'")
+    done < <(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${sname}\") | .requires.env[]? // \"\"" 2>/dev/null || true)
+
   done < <(echo "${CTRL_YAML}" | yq '.scripts[].name // ""' 2>/dev/null || true)
 
   # ── output ────────────────────────────────────────────────────────────────

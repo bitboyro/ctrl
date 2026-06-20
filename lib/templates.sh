@@ -58,6 +58,16 @@ fi
 
 # ── Dependency Checks ─────────────────────────────────────────────────────────
 _check_deps() {
+  # Declare tool/env requirements in ctrl.yaml under scripts[].requires — ctrl
+  # enforces them before this script runs (locally for ctrl run, remotely for ctrl cpr):
+  #
+  #   scripts:
+  #     - name: __NAME__
+  #       requires:
+  #         tools: [docker, jq]
+  #         env: [MY_SECRET]
+  #
+  # For runtime-only checks not covered by requires:, call require_cmd here:
   # require_cmd docker
   return 0
 }

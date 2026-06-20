@@ -33,7 +33,7 @@ _ctrl() {
         ssh|remote-status|rs|remote-logs|rl|env|e)
           _ctrl_machines
           ;;
-        run)
+        run|copy-run|cpr)
           _ctrl_scripts
           ;;
         script)
@@ -109,7 +109,9 @@ _ctrl_commands() {
     'wr:alias for wait-ready'
     'smoke-test:run smoke test scripts'
     'st:alias for smoke-test'
-    'run:run a named script'
+    'run:run a named script locally'
+    'copy-run:pipe a named script to remote and run it there'
+    'cpr:alias for copy-run'
     'script:manage scripts'
     'scripts:list scripts'
     'sc:alias for scripts'

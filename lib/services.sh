@@ -162,7 +162,8 @@ release_service() {
   local kind; kind="$(ctrl_service_kind "${svc}")"
   case "${kind}" in
     external)
-      fail "Service '${svc}' is kind: external — release is not applicable" ;;
+      msg_warn "Skipping '${svc}' (kind: external — release not applicable)"
+      return 0 ;;
     library)
       build_code_service "${svc}" ;;
     *)

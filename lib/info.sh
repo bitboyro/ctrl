@@ -520,6 +520,23 @@ ctrl run <name> [args...]
 
 EOF
       ;;
+    copy-run|cpr)
+      cat <<'EOF'
+
+ctrl copy-run <name> [target]   (alias: ctrl cpr)
+
+  Pipe a named script to the remote host via SSH and execute it there.
+  The script receives CTRL_PROJECT, CTRL_SSH_HOST, CTRL_REGISTRY, and
+  CTRL_REMOTE_DIR as env vars (same as local ctrl run).
+
+  The script is streamed via stdin — nothing is left on the remote.
+
+  Examples:
+    ctrl cpr cleanup-logs           # run on default deployment target
+    ctrl cpr cleanup-logs staging   # run on staging target
+
+EOF
+      ;;
     *)
       msg_warn "No per-command help for '${cmd}'. Try: ctrl help"
       exit 1
