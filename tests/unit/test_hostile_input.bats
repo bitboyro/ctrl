@@ -108,7 +108,10 @@ assert_yaml_unchanged() {
 # ── sniff / hc ─────────────────────────────────────────────────────────────
 
 @test "sniff rejects a non-integer duration" {
-  run_ctrl run sniff api --duration '5; touch ${PWNED}' -n
+  # sniff's pre-flight needs docker; fake it so the test runs where docker isn't installed
+  mkdir -p "${TEST_TMP}/bin"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "${TEST_TMP}/bin/docker"; chmod +x "${TEST_TMP}/bin/docker"
+  PATH="${TEST_TMP}/bin:${PATH}" run_ctrl run sniff api --duration '5; touch ${PWNED}' -n
   assert_failure
   assert_contains "--duration must be a whole number"
   assert_not_pwned
