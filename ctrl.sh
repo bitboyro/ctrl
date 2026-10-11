@@ -212,28 +212,32 @@ case "${CMD}" in
   # ── build ────────────────────────────────────────────────────────────────
   build|b)
     [[ "$#" -gt 0 ]] || fail "Usage: ctrl b <svc|all>"
-    read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
+    _svc_out="$(ctrl_resolve_services "$@")" || exit 1
+    read -r -a svcs <<< "${_svc_out}"
     with_journal "build" "${svcs[*]}" run_for_each build_code_service "${svcs[@]}"
     ;;
 
   # ── image ────────────────────────────────────────────────────────────────
   image|i)
     [[ "$#" -gt 0 ]] || fail "Usage: ctrl i <svc|all>"
-    read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
+    _svc_out="$(ctrl_resolve_services "$@")" || exit 1
+    read -r -a svcs <<< "${_svc_out}"
     with_journal "image" "${svcs[*]}" run_for_each build_image_service "${svcs[@]}"
     ;;
 
   # ── push ─────────────────────────────────────────────────────────────────
   push|p)
     [[ "$#" -gt 0 ]] || fail "Usage: ctrl p <svc|all>"
-    read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
+    _svc_out="$(ctrl_resolve_services "$@")" || exit 1
+    read -r -a svcs <<< "${_svc_out}"
     with_journal "push" "${svcs[*]}" run_for_each push_image_service "${svcs[@]}"
     ;;
 
   # ── release ──────────────────────────────────────────────────────────────
   release|r)
     [[ "$#" -gt 0 ]] || fail "Usage: ctrl r <svc|all>"
-    read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
+    _svc_out="$(ctrl_resolve_services "$@")" || exit 1
+    read -r -a svcs <<< "${_svc_out}"
     with_journal "release" "${svcs[*]}" run_for_each release_service "${svcs[@]}"
     ;;
 

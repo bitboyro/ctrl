@@ -75,16 +75,16 @@ _mcp_run_tool() {
     build_service)
       local svc; svc="$(_p '.service // ""')"
       [[ -n "${svc}" ]] || { echo '{"error":"service is required"}'; return 1; }
-      output="$( { read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"; for s in "${svcs[@]}"; do build_code_service "${s}" || exit 1; done; } 2>&1 )" || exit_code=$?
+      output="$( { _s="$(ctrl_resolve_services "${svc}")" || exit 1; read -r -a svcs <<< "${_s}"; for s in "${svcs[@]}"; do build_code_service "${s}" || exit 1; done; } 2>&1 )" || exit_code=$?
       ;;
     release_service)
       local svc; svc="$(_p '.service // ""')"
       [[ -n "${svc}" ]] || { echo '{"error":"service is required"}'; return 1; }
-      output="$( { read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"; f=0; for s in "${svcs[@]}"; do release_service "${s}" || f=1; done; exit "${f}"; } 2>&1 )" || exit_code=$?
+      output="$( { _s="$(ctrl_resolve_services "${svc}")" || exit 1; read -r -a svcs <<< "${_s}"; f=0; for s in "${svcs[@]}"; do release_service "${s}" || f=1; done; exit "${f}"; } 2>&1 )" || exit_code=$?
       ;;
     deploy_service)
       local svc dep; svc="$(_p '.service // "all"')"; dep="$(_p '.deployment // ""')"
-      output="$( { resolve_deployment "${dep}" && read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")" && deploy_services "${svcs[@]}"; } 2>&1 )" || exit_code=$?
+      output="$( { resolve_deployment "${dep}" && _s="$(ctrl_resolve_services "${svc}")" && read -r -a svcs <<< "${_s}" && deploy_services "${svcs[@]}"; } 2>&1 )" || exit_code=$?
       ;;
     diff_deployment)
       local dep; dep="$(_p '.deployment // ""')"

@@ -690,7 +690,8 @@ ctrl_run() {
 
   local -a targets=()
   if [[ -n "${CTRL_RUN_ON}" ]]; then
-    while IFS= read -r t; do targets+=("${t}"); done < <(_run_expand_targets "${CTRL_RUN_ON}")
+    local expanded; expanded="$(_run_expand_targets "${CTRL_RUN_ON}")" || exit 1
+    while IFS= read -r t; do targets+=("${t}"); done <<< "${expanded}"
   else
     targets=(local)
   fi
