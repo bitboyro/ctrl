@@ -32,3 +32,14 @@ teardown() { teardown_test_dir; }
   result="$(_resolve_env_refs "\${A}-\${B}-\${A}")"
   assert_eq "${result}" "foo-bar-foo"
 }
+
+@test "unbraced \$VAR resolves like envsubst did in 0.3" {
+  export A=foo B_2=bar
+  result="$(_resolve_env_refs "x \$A/\$B_2.y \${A}")"
+  assert_eq "${result}" "x foo/bar.y foo"
+}
+
+@test "a lone \$ or \$ before a non-name is left as is" {
+  result="$(_resolve_env_refs "cost \$5 and \$ and \${unclosed")"
+  assert_eq "${result}" "cost \$5 and \$ and \${unclosed"
+}

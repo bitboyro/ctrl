@@ -18,13 +18,13 @@ setup() {
 teardown() { teardown_test_dir; }
 
 @test "no --tag lists all scripts" {
-  run_ctrl scripts
+  run_ctrl run
   assert_success
   for n in alpha bravo charlie delta; do assert_contains "${n}"; done
 }
 
 @test "--tag deploy returns exactly the deploy-tagged scripts" {
-  run_ctrl scripts --tag deploy
+  run_ctrl run --tag deploy
   assert_success
   assert_contains "alpha"
   assert_contains "bravo"
@@ -33,7 +33,7 @@ teardown() { teardown_test_dir; }
 }
 
 @test "--tag smoke returns exactly the smoke-tagged scripts" {
-  run_ctrl scripts --tag smoke
+  run_ctrl run --tag smoke
   assert_success
   assert_contains "alpha"
   assert_contains "charlie"
@@ -42,7 +42,7 @@ teardown() { teardown_test_dir; }
 }
 
 @test "--tag with no matches returns no script rows" {
-  run_ctrl scripts --tag nonexistent
+  run_ctrl run --tag nonexistent
   assert_success
   for n in alpha bravo charlie delta; do refute_contains "${n}"; done
 }

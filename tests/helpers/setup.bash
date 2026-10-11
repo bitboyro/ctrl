@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # tests/helpers/setup.bash — shared fixtures and assertions for ctrl tests.
+# shellcheck disable=SC2154  # status / output are set by bats `run`
 # Source from each .bats file via:
 #   load "${BATS_TEST_DIRNAME}/../helpers/setup.bash"
 
@@ -12,6 +13,7 @@ setup_test_dir() {
   TEST_TMP="$(mktemp -d -t ctrltest.XXXXXX)"
   export TEST_TMP
   export CTRL_CONFIG="${TEST_TMP}/ctrl.yaml"
+  export CTRL_CACHE_DIR="${TEST_TMP}/.cache"
   unset CTRL_MACHINE CTRL_DEPLOYMENT CTRL_DRY_RUN CTRL_VERBOSE CTRL_JSON
 }
 

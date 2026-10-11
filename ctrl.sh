@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CTRL_SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Resolve symlinks without readlink -f (missing on older macOS).
+_ctrl_self="${BASH_SOURCE[0]}"
+while [[ -L "${_ctrl_self}" ]]; do
+  _ctrl_link="$(readlink "${_ctrl_self}")"
+  [[ "${_ctrl_link}" == /* ]] && _ctrl_self="${_ctrl_link}" || _ctrl_self="$(dirname "${_ctrl_self}")/${_ctrl_link}"
+done
+CTRL_SELF_DIR="$(cd "$(dirname "${_ctrl_self}")" && pwd -P)"
+CTRL_BIN="${CTRL_SELF_DIR}/$(basename "${_ctrl_self}")"   # scripts call back into ctrl via this
+unset _ctrl_self _ctrl_link
 
 # ── Vendored ctrl detection ──────────────────────────────────────────────────
 # A project can vendor its own ctrl version at vendor/ctrl/ or .ctrl/ next to
@@ -9,7 +17,8 @@ CTRL_SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # responsible for resolving that path and invoking the vendored ctrl.sh
 # directly — this script just exposes a probe for downstream tooling.
 ctrl_find_vendored() {
-  local start="${1:-${PWD}}" dir="${start}"
+  local start="${1:-${PWD}}"
+  local dir="${start}"
   while [[ "${dir}" != "/" ]]; do
     if [[ -f "${dir}/ctrl.yaml" ]]; then
       [[ -x "${dir}/vendor/ctrl/ctrl.sh" ]] && { echo "${dir}/vendor/ctrl/ctrl.sh"; return 0; }
@@ -28,14 +37,13 @@ source "${CTRL_SELF_DIR}/lib/remote.sh"
 source "${CTRL_SELF_DIR}/lib/health.sh"
 source "${CTRL_SELF_DIR}/lib/audit.sh"
 source "${CTRL_SELF_DIR}/lib/ext.sh"
-source "${CTRL_SELF_DIR}/lib/gitlab.sh"
-source "${CTRL_SELF_DIR}/lib/templates.sh"
+source "${CTRL_SELF_DIR}/lib/scripts.sh"
 source "${CTRL_SELF_DIR}/lib/init.sh"
 source "${CTRL_SELF_DIR}/lib/check.sh"
 source "${CTRL_SELF_DIR}/lib/info.sh"
+source "${CTRL_SELF_DIR}/lib/help.sh"
 source "${CTRL_SELF_DIR}/lib/mcp.sh"
 source "${CTRL_SELF_DIR}/lib/cp.sh"
-source "${CTRL_SELF_DIR}/lib/probe.sh"
 source "${CTRL_SELF_DIR}/lib/doctor.sh"
 
 
@@ -81,16 +89,23 @@ _resolve_ssh_arg() {
 
 # ── global flag parsing ───────────────────────────────────────────────────────
 CTRL_FOLLOW=0
+# Global flags are recognised anywhere, except after `run <name>`: from there
+# on, arguments belong to the script (ctrl run parses its own modifiers).
 _parse_global_flags() {
   local -a remaining=()
+  local positionals=0
   while [[ "$#" -gt 0 ]]; do
+    if [[ "${positionals}" -ge 2 && "${remaining[0]:-}" == "run" ]]; then
+      remaining+=("$@"); break
+    fi
     case "$1" in
       --dry-run|-n) CTRL_DRY_RUN=1 ;;
       --verbose|-v) CTRL_VERBOSE=1 ;;
       --json)       CTRL_JSON=1 ;;
       --config)     shift; CTRL_CONFIG_FILE="$1" ;;
       --follow)     CTRL_FOLLOW=1 ;;
-      *)            remaining+=("$1") ;;
+      -*)           remaining+=("$1") ;;
+      *)            remaining+=("$1"); positionals=$(( positionals + 1 )) ;;
     esac
     shift
   done
@@ -109,6 +124,7 @@ case "${1:-}" in
   completion)
     shift
     _shell="${1:-bash}"
+    [[ "${_shell}" == "bash" || "${_shell}" == "zsh" ]] || { echo "No completion for shell: ${_shell}. Available: bash, zsh" >&2; exit 1; }
     # In the bundled dist, completion scripts are embedded as functions.
     if declare -f "_ctrl_embedded_completion_${_shell}" >/dev/null 2>&1; then
       "_ctrl_embedded_completion_${_shell}"
@@ -127,89 +143,7 @@ case "${1:-}" in
       _CTRL_HELP_CMD="${_help_cmd}"
       _CTRL_HELP_MODE=1
     else
-    _ver_line="ctrl v${CTRL_VERSION} — YAML-driven platform operations CLI"
-    cat <<EOF
-${_ver_line}
-
-Usage: ctrl [flags] <command> [args]
-       ctrl help <command>    per-command help with examples
-
-Quick start:
-  ctrl init             # generate ctrl.yaml for this project
-  ctrl check            # validate the config
-  ctrl list             # see all services
-
-Build pipeline:
-  b  / build   <svc|all>             Build service code locally
-  i  / image   <svc|all>             Build Docker image (no push)
-  p  / push    <svc|all>             Push image to registry
-  r  / release <svc|all>             build + image + push
-
-  Example: ctrl release api          # build + image + push for api
-
-Deploy pipeline:
-  d  / deploy    [target] [svc|all]  Pull + start on deployment target
-  rd / redeploy  [target] [svc|all]  release + deploy in one step
-  s  / sync      [target]            Sync files to target
-  sd / sync-deploy [target] [svc|all] sync + deploy
-
-  Example: ctrl diff                 # check drift before deploying
-           ctrl deploy prod api      # deploy api to prod
-
-Remote:
-  ssh              [target] [-- cmd] Interactive SSH or run remote command
-  rs / remote-status [target] [svc]  docker compose ps
-  rl / remote-logs   [target] <svc>  docker compose logs  (--follow to tail)
-  e  / env           [target] <svc>  Show env of running container
-
-  Example: ctrl rl api --follow      # tail api logs on default machine
-
-Health & tests:
-  hc / health-check [svc|all]        Health check
-  wr / wait-ready   <svc> [timeout]  Wait until healthy
-  st / smoke-test   [svc|all]        Run smoke tests
-
-Scripts:
-  run            <name> [args]       Run a named script locally
-  cpr / copy-run <name> [target]     Pipe script to remote and run it there
-  script init    <name>              Create script from template + register
-  sc / scripts                       List scripts
-
-Diagnostics:
-  ping           <svc|machine>       HTTP / TCP ping with latency stats
-  call           <svc> <path>        Authenticated REST call
-  probe          [svc] [--tcp]       HTTP or TCP connectivity check
-  probe sniff    <svc>               Live tcpdump via ctrl-tools container
-  probe shell                        Interactive ctrl-tools container shell
-  doctor         [--install]         Pre-flight dep check with install hints
-  cp             <src> <dst>         Copy files locally or via named machines
-
-Config & info:
-  init                               Interactive wizard — generate ctrl.yaml
-  c  / check    [--json]             Validate ctrl.yaml
-  ls / list                          List all services with kind + image:tag
-  info          [machine|svc]        Project / machine / service detail
-  m  / machines                      List machines
-  diff          [target] [--json]    Declared vs running image:tag (drift)
-  t  / tag      <svc> <newtag>       Update service tag in ctrl.yaml
-  default       <name>               Set machines.default or deployments.default
-  h  / history  [n]                  Last n journal entries (default 20)
-  mcp                                Start stdio MCP server (JSON-RPC 2.0)
-  completion    <bash|zsh>           Print shell completion script
-  upgrade                            Upgrade ctrl to latest release
-
-Global flags:
-  -n  --dry-run        Print commands, no execution
-  -v  --verbose        Extra debug output
-      --json           JSON output (list, hc, info, diff, check, sc, machines)
-      --config <path>  Override ctrl.yaml location
-      --follow         Tail logs (with rl)
-
-Deps: yq jq curl ssh docker rsync   Run 'ctrl doctor' to verify.
-
-[target] is a deployment or machine name. Omit to use the configured default.
-
-EOF
+    ctrl_help_top
     exit 0
     fi
     ;;
@@ -237,6 +171,8 @@ fi
 
 
 # ── commands that need config ─────────────────────────────────────────────────
+# run and doctor also work outside a project (bundled scripts, tool checks).
+case "${1:-}" in run|doctor) CTRL_CONFIG_OPTIONAL=1 ;; esac
 load_config
 load_extensions
 
@@ -251,30 +187,26 @@ CTRL_SVC_ARGS=()
 
 case "${CMD}" in
 
-  # ── GitLab ───────────────────────────────────────────────────────────────
-  gitlab-project-info)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl gitlab-project-info <project-id-or-path>"
-    ctrl_gitlab_project_info "$1"
-    ;;
-
-  gitlab-runner-deploy)
-    ctrl_gitlab_runner_deploy
-    ;;
-
   # ── list ─────────────────────────────────────────────────────────────────
   list|ls)
-    if [[ "${CTRL_JSON}" == "1" ]]; then
-      ctrl_list_json
-    else
-      printf '%s%-20s %-10s %-12s %s%s\n' "${BOLD}" "SERVICE" "KIND" "BUILD" "IMAGE:TAG" "${RESET}"
-      while IFS= read -r svc; do
-        local_kind="$(ctrl_service_kind "${svc}")"
-        local_tool="$(ctrl_service_field "${svc}" '.build.tool // "—"')"
-        [[ "${local_kind}" == "external" ]] && local_tool="—"
-        svc_img="$(ctrl_service_field "${svc}" '.image // "-"'):$(ctrl_service_field "${svc}" '.tag // "latest"')"
-        printf '  %-20s %-10s %-12s %s\n' "${svc}" "${local_kind}" "${local_tool}" "${svc_img}"
-      done < <(ctrl_service_names)
-    fi
+    case "${1:-services}" in
+      machines|m) ctrl_list_machines ;;
+      services|s)
+        if [[ "${CTRL_JSON}" == "1" ]]; then
+          ctrl_list_json
+        else
+          printf '%s%-20s %-10s %-12s %s%s\n' "${BOLD}" "SERVICE" "KIND" "BUILD" "IMAGE:TAG" "${RESET}"
+          while IFS= read -r svc; do
+            local_kind="$(ctrl_service_kind "${svc}")"
+            local_tool="$(ctrl_service_field "${svc}" '.build.tool // "—"')"
+            [[ "${local_kind}" == "external" ]] && local_tool="—"
+            svc_img="$(ctrl_service_field "${svc}" '.image // "-"'):$(ctrl_service_field "${svc}" '.tag // "latest"')"
+            printf '  %-20s %-10s %-12s %s\n' "${svc}" "${local_kind}" "${local_tool}" "${svc_img}"
+          done < <(ctrl_service_names)
+        fi
+        ;;
+      *) fail "Usage: ctrl list [services|machines]   (scripts: ctrl run)" ;;
+    esac
     ;;
 
   # ── build ────────────────────────────────────────────────────────────────
@@ -311,42 +243,28 @@ case "${CMD}" in
     with_journal "sync" "${CTRL_DEPLOY_NAME}" sync_files
     ;;
 
-  # ── deploy ───────────────────────────────────────────────────────────────
+  # ── deploy [--release] [--sync] [target] [svc|all] ───────────────────────
   deploy|d)
-    _resolve_target_and_services "$@"
+    _deploy_release=0; _deploy_sync=0; _deploy_args=()
+    for _a in "$@"; do
+      case "${_a}" in
+        --release) _deploy_release=1 ;;
+        --sync)    _deploy_sync=1 ;;
+        -*)        fail "Unknown flag: ${_a}. Usage: ctrl deploy [--release] [--sync] [target] [svc|all]" ;;
+        *)         _deploy_args+=("${_a}") ;;
+      esac
+    done
+    _resolve_target_and_services "${_deploy_args[@]+"${_deploy_args[@]}"}"
     if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
       _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
     else
       _svc_out="$(ctrl_resolve_services all)" || exit 1
     fi
     read -r -a svcs <<< "${_svc_out}"
-    with_journal "deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
-    ;;
-
-  # ── redeploy ─────────────────────────────────────────────────────────────
-  redeploy|rd)
-    _resolve_target_and_services "$@"
-    if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
-      _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
-    else
-      _svc_out="$(ctrl_resolve_services all)" || exit 1
-    fi
-    read -r -a svcs <<< "${_svc_out}"
-    run_for_each release_service "${svcs[@]}"
-    with_journal "redeploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
-    ;;
-
-  # ── sync-deploy ──────────────────────────────────────────────────────────
-  sync-deploy|sd)
-    _resolve_target_and_services "$@"
-    if [[ "${#CTRL_SVC_ARGS[@]}" -gt 0 ]]; then
-      _svc_out="$(ctrl_resolve_services "${CTRL_SVC_ARGS[@]}")" || exit 1
-    else
-      _svc_out="$(ctrl_resolve_services all)" || exit 1
-    fi
-    read -r -a svcs <<< "${_svc_out}"
-    sync_files
-    with_journal "sync-deploy" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
+    _deploy_cmd="deploy"
+    [[ "${_deploy_release}" == "1" ]] && { _deploy_cmd+=" --release"; run_for_each release_service "${svcs[@]}"; }
+    [[ "${_deploy_sync}" == "1" ]]    && { _deploy_cmd+=" --sync"; sync_files; }
+    with_journal "${_deploy_cmd}" "${CTRL_DEPLOY_NAME}:${svcs[*]}" deploy_services "${svcs[@]}"
     ;;
 
   # ── ssh ──────────────────────────────────────────────────────────────────
@@ -375,94 +293,21 @@ case "${CMD}" in
     with_journal "remote-logs" "${CTRL_MACHINE_NAME}:${CTRL_SVC_ARGS[0]}" remote_logs "${CTRL_SVC_ARGS[0]}" "${CTRL_SVC_ARGS[1]:-200}"
     ;;
 
-  # ── env (was inspect) ────────────────────────────────────────────────────
+  # ── env (container environment) ──────────────────────────────────────────
   env|e)
     _resolve_ssh_arg "$@"
     [[ "${#CTRL_SVC_ARGS[@]}" -ge 1 ]] || fail "Usage: ctrl env [target] <svc>"
     with_journal "env" "${CTRL_MACHINE_NAME}:${CTRL_SVC_ARGS[0]}" remote_env "${CTRL_SVC_ARGS[0]}"
     ;;
 
-  # ── health-check ─────────────────────────────────────────────────────────
+  # ── hc: health, wait, latency, tcp — services and machines ──────────────
   health-check|hc)
-    resolve_deployment "" 2>/dev/null || true
-    svcs=()
-    if [[ "$#" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_health_services "$@")"
-    else
-      read -r -a svcs <<< "$(ctrl_health_target_names)"
-    fi
-    with_journal "health-check" "${svcs[*]}" run_for_each_continue health_check_service "${svcs[@]}"
+    with_journal "health-check" "$*" ctrl_hc "$@"
     ;;
 
-  # ── wait-ready ───────────────────────────────────────────────────────────
-  wait-ready|wr)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl wr <svc> [timeout]"
-    with_journal "wait-ready" "$1" wait_ready_service "$1" "${2:-60}"
-    ;;
-
-  # ── smoke-test ───────────────────────────────────────────────────────────
-  smoke-test|st)
-    if [[ "$#" -gt 0 ]]; then
-      read -r -a svcs <<< "$(ctrl_resolve_services "$@")"
-    else
-      read -r -a svcs <<< "$(ctrl_resolve_services all)"
-    fi
-    with_journal "smoke-test" "${svcs[*]}" smoke_test_services "${svcs[@]}"
-    ;;
-
-  # ── run script ───────────────────────────────────────────────────────────
+  # ── run: every script, local or on any set of hosts ─────────────────────
   run)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl run <name> [args]"
-    _script_name="$1"; shift
-    with_journal "run" "${_script_name}" run_script "${_script_name}" "$@"
-    ;;
-
-  # ── copy-run script on remote ─────────────────────────────────────────────
-  copy-run|cpr)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl cpr <name> [target]"
-    _script_name="$1"; shift
-    if [[ "$#" -gt 0 ]] && is_deployment_target "$1"; then
-      resolve_deployment "$1"; shift
-    else
-      resolve_deployment ""
-    fi
-    with_journal "copy-run" "${_script_name}" copy_run_script "${_script_name}"
-    ;;
-
-  # ── script subcommands ───────────────────────────────────────────────────
-  script)
-    case "${1:-}" in
-      init)
-        shift
-        [[ "$#" -ge 1 ]] || fail "Usage: ctrl script init <name>"
-        ctrl_script_init "$1"
-        ;;
-      ""|list)
-        printf '%s%-24s %s%s\n' "${BOLD}" "SCRIPT" "DESCRIPTION" "${RESET}"
-        list_scripts
-        ;;
-      *)
-        fail "Unknown script subcommand: $1. Use: ctrl script init <name>"
-        ;;
-    esac
-    ;;
-
-  # ── list scripts ─────────────────────────────────────────────────────────
-  scripts|sc)
-    _filter_tag=""
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --tag) shift; _filter_tag="${1:-}"; shift ;;
-        *)     shift ;;
-      esac
-    done
-    printf '%s%-24s %s%s\n' "${BOLD}" "SCRIPT" "DESCRIPTION" "${RESET}"
-    list_scripts "${_filter_tag}"
-    ;;
-
-  # ── machines ─────────────────────────────────────────────────────────────
-  machines|m)
-    ctrl_list_machines
+    ctrl_run "$@"
     ;;
 
   # ── drift detection ──────────────────────────────────────────────────────
@@ -481,16 +326,19 @@ case "${CMD}" in
     with_journal "check" "" ctrl_check
     ;;
 
-  # ── tag ──────────────────────────────────────────────────────────────────
-  tag|t)
-    [[ "$#" -ge 2 ]] || fail "Usage: ctrl tag <svc> <tag>"
-    with_journal "tag" "$1:$2" ctrl_set_tag "$1" "$2"
-    ;;
-
-  # ── default ──────────────────────────────────────────────────────────────
-  default)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl default <name>"
-    with_journal "default" "$1" ctrl_set_default "$1"
+  # ── set tag|default ──────────────────────────────────────────────────────
+  set)
+    case "${1:-}" in
+      tag)
+        [[ "$#" -ge 3 ]] || fail "Usage: ctrl set tag <svc> <tag>"
+        with_journal "set tag" "$2:$3" ctrl_set_tag "$2" "$3"
+        ;;
+      default)
+        [[ "$#" -ge 2 ]] || fail "Usage: ctrl set default <machine|deployment>"
+        with_journal "set default" "$2" ctrl_set_default "$2"
+        ;;
+      *) fail "Usage: ctrl set tag <svc> <tag>  |  ctrl set default <machine|deployment>" ;;
+    esac
     ;;
 
   # ── history ──────────────────────────────────────────────────────────────
@@ -508,23 +356,6 @@ case "${CMD}" in
     ctrl_cp "$@"
     ;;
 
-  # ── ping ─────────────────────────────────────────────────────────────────
-  ping)
-    [[ "$#" -ge 1 ]] || fail "Usage: ctrl ping <svc|machine> [--n <count>] [--interval <s>]"
-    ctrl_ping "$@"
-    ;;
-
-  # ── call ─────────────────────────────────────────────────────────────────
-  call)
-    [[ "$#" -ge 2 ]] || fail "Usage: ctrl call <svc> <path> [--method GET|POST|PUT|DELETE] [--body '{}'] [--header 'K: V']"
-    ctrl_call "$@"
-    ;;
-
-  # ── probe ────────────────────────────────────────────────────────────────
-  probe)
-    ctrl_probe "$@"
-    ;;
-
   # ── doctor ───────────────────────────────────────────────────────────────
   doctor)
     ctrl_doctor "$@"
@@ -535,12 +366,15 @@ case "${CMD}" in
     ctrl_upgrade
     ;;
 
-
   # ── extension commands ────────────────────────────────────────────────────
   *)
-    _ext_fn="ctrl_cmd_${CMD//-/_}"
-    if declare -f "${_ext_fn}" >/dev/null 2>&1; then
+    # Extensions define ctrl_ext_cmd_<name> (legacy: ctrl_cmd_<name>)
+    _ext_fn="ctrl_ext_cmd_${CMD//-/_}"
+    ctrl_is_valid_name "${CMD}" && ! declare -f "${_ext_fn}" >/dev/null 2>&1 && _ext_fn="ctrl_cmd_${CMD//-/_}"
+    if ctrl_is_valid_name "${CMD}" && declare -f "${_ext_fn}" >/dev/null 2>&1; then
       "${_ext_fn}" "$@"
+    elif _moved="$(ctrl_moved_command "${CMD}")"; then
+      fail "'ctrl ${CMD}' was removed in ctrl 0.4 — use: ${_moved}"
     else
       fail "Unknown command: ${CMD}. Run 'ctrl help' for usage."
     fi

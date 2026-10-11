@@ -45,7 +45,7 @@ _assert_kind_allows() {
 
 _build_prerequisites() {
   local svc="$1"
-  local prereqs; prereqs="$(echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | .build.prerequisites[]? // \"\"" 2>/dev/null || true)"
+  local prereqs; prereqs="$(echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq ".services[] | select(.name == strenv(CTRL_Q)) | .build.prerequisites[]? // \"\"" 2>/dev/null || true)"
   [[ -z "${prereqs}" || "${prereqs}" == "null" ]] && return 0
   local base; base="$(dirname "${CTRL_CONFIG_FILE}")"
   local p
@@ -54,10 +54,10 @@ _build_prerequisites() {
     local abs_p="${base}/${p}"
     if [[ -f "${abs_p}/mvnw" ]]; then
       msg "Building prerequisite: ${p}"
-      run_op "mvnw install ${p}" bash -c "cd '${abs_p}' && ./mvnw -Dmaven.test.skip=true clean install"
+      run_op "mvnw install ${p}" bash -c "cd \"\$1\" && ./mvnw -Dmaven.test.skip=true clean install" _ "${abs_p}"
     elif [[ -f "${abs_p}/pom.xml" ]]; then
       msg "Building prerequisite: ${p}"
-      run_op "mvn install ${p}" bash -c "cd '${abs_p}' && mvn -Dmaven.test.skip=true clean install"
+      run_op "mvn install ${p}" bash -c "cd \"\$1\" && mvn -Dmaven.test.skip=true clean install" _ "${abs_p}"
     fi
   done <<< "${prereqs}"
 }
@@ -77,24 +77,24 @@ build_code_service() {
     maven)
       local wrapper="${dir}/mvnw"
       if [[ -f "${wrapper}" ]]; then
-        run_op "build ${svc}" bash -c "cd '${dir}' && ./mvnw -Dmaven.test.skip=true clean package ${extra}"
+        run_op "build ${svc}" bash -c "cd \"\$1\" && ./mvnw -Dmaven.test.skip=true clean package ${extra}" _ "${dir}"
       else
-        run_op "build ${svc}" bash -c "cd '${dir}' && mvn -Dmaven.test.skip=true clean package ${extra}"
+        run_op "build ${svc}" bash -c "cd \"\$1\" && mvn -Dmaven.test.skip=true clean package ${extra}" _ "${dir}"
       fi
       ;;
     gradle)
-      run_op "build ${svc}" bash -c "cd '${dir}' && ./gradlew build -x test ${extra}"
+      run_op "build ${svc}" bash -c "cd \"\$1\" && ./gradlew build -x test ${extra}" _ "${dir}"
       ;;
     npm)
-      run_op "build ${svc}" bash -c "cd '${dir}' && npm ci && npm run build ${extra}"
+      run_op "build ${svc}" bash -c "cd \"\$1\" && npm ci && npm run build ${extra}" _ "${dir}"
       ;;
     make)
-      run_op "build ${svc}" bash -c "cd '${dir}' && make ${extra}"
+      run_op "build ${svc}" bash -c "cd \"\$1\" && make ${extra}" _ "${dir}"
       ;;
     shell)
       local script; script="$(ctrl_service_field "${svc}" '.build.script // ""')"
       [[ -n "${script}" ]] || fail "build.tool=shell requires build.script for service '${svc}'"
-      run_op "build ${svc}" bash -c "cd '${dir}' && bash '${script}' ${extra}"
+      run_op "build ${svc}" bash -c "cd \"\$1\" && bash \"\$2\" ${extra}" _ "${dir}" "${script}"
       ;;
     skip|none)
       msg_verbose "Skipping code build for ${svc} (tool=skip)"
@@ -119,6 +119,7 @@ _docker_login_once() {
   [[ -n "${CTRL_DOCKER_PASS}" ]] || fail "DOCKERHUB_PASSWORD is not set"
   msg "Logging into registry as ${CTRL_DOCKER_USER}"
   run_op "docker login" bash -c 'printf "%s" "${CTRL_DOCKER_PASS}" | docker login --username "${CTRL_DOCKER_USER}" --password-stdin'
+  unset CTRL_DOCKER_PASS   # only the login subshell needed it
   DOCKER_LOGGED_IN=1
 }
 

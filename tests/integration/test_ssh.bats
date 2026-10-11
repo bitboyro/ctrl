@@ -38,7 +38,7 @@ teardown() { teardown_test_dir; }
   run env CTRL_CONFIG="${CTRL_CONFIG}" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
     "${CTRL_REPO_ROOT}/ctrl.sh" ssh testbox -- echo hello
   [[ "${status}" -eq 0 ]] || { echo "${output}"; return 1; }
-  [[ "${output}" == *"hello"* ]]
+  [[ "${output}" == *"hello"* ]] || return 1
 }
 
 @test "ctrl ssh fails cleanly when sshpass is missing" {
@@ -47,13 +47,41 @@ teardown() { teardown_test_dir; }
   run env CTRL_CONFIG="${CTRL_CONFIG}" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
     CTRL_SSHPASS_CMD="${TEST_TMP}/missing-sshpass" \
     "${CTRL_REPO_ROOT}/ctrl.sh" ssh testbox -- true
-  [[ "${status}" -ne 0 ]]
-  [[ "${output}" == *"sshpass required"* ]]
+  [[ "${status}" -ne 0 ]] || return 1
+  [[ "${output}" == *"sshpass required"* ]] || return 1
 }
 
 @test "password is not present in --dry-run output" {
   run env CTRL_CONFIG="${CTRL_CONFIG}" TEST_SSH_PASSWORD="supersecret" \
     "${CTRL_REPO_ROOT}/ctrl.sh" --dry-run ssh testbox -- echo x
-  [[ "${output}" != *"supersecret"* ]]
-  [[ "${output}" == *"<redacted>"* ]]
+  [[ "${output}" != *"supersecret"* ]] || return 1
+  [[ "${output}" == *"<redacted>"* ]] || return 1
+}
+
+# ── ctrl run --on over real SSH ─────────────────────────────────────────────
+
+@test "ctrl run --on streams a project script with args and ctrl env to the host" {
+  mkdir -p "${TEST_TMP}/scripts"
+  printf '#!/usr/bin/env bash\n# @requires: sh\necho "remote=${CTRL_REMOTE} machine=${CTRL_MACHINE_NAME} args=$*"\n' > "${TEST_TMP}/scripts/where.sh"
+  run env CTRL_CONFIG="${CTRL_CONFIG}" CTRL_CACHE_DIR="${TEST_TMP}/.cache" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
+    "${CTRL_REPO_ROOT}/ctrl.sh" run where --on testbox "a b" c
+  [[ "${status}" -eq 0 ]] || { echo "${output}"; return 1; }
+  [[ "${output}" == *"remote=1 machine=testbox args=a b c"* ]] || { echo "${output}"; return 1; }
+}
+
+@test "ctrl run --on stops at the remote pre-flight when a tool is missing" {
+  mkdir -p "${TEST_TMP}/scripts"
+  printf '#!/usr/bin/env bash\n# @requires: __ctrl_not_on_remote__\necho BODY-RAN\n' > "${TEST_TMP}/scripts/needy.sh"
+  run env CTRL_CONFIG="${CTRL_CONFIG}" CTRL_CACHE_DIR="${TEST_TMP}/.cache" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
+    "${CTRL_REPO_ROOT}/ctrl.sh" run needy --on testbox
+  [[ "${status}" -ne 0 ]] || return 1
+  [[ "${output}" == *"remote requires __ctrl_not_on_remote__"* ]] || { echo "${output}"; return 1; }
+  [[ "${output}" != *"BODY-RAN"* ]] || return 1
+}
+
+@test "a bundled script runs on the host: sysinfo --short" {
+  run env CTRL_CONFIG="${CTRL_CONFIG}" CTRL_CACHE_DIR="${TEST_TMP}/.cache" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
+    "${CTRL_REPO_ROOT}/ctrl.sh" run sysinfo --on testbox --short
+  [[ "${status}" -eq 0 ]] || { echo "${output}"; return 1; }
+  [[ "${output}" == *"cpu"*"mem"* ]] || { echo "${output}"; return 1; }
 }

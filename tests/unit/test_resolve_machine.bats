@@ -54,7 +54,7 @@ teardown() { teardown_test_dir; }
   write_fixture_yaml
   load_config
   run resolve_machine "nonexistent"
-  [[ "${status}" -ne 0 ]]
+  [[ "${status}" -ne 0 ]] || return 1
   assert_contains "Machine 'nonexistent' not found"
 }
 
@@ -63,7 +63,7 @@ teardown() { teardown_test_dir; }
   yq -i 'del(.machines.default)' "${TEST_TMP}/ctrl.yaml"
   load_config
   run resolve_machine ""
-  [[ "${status}" -ne 0 ]]
+  [[ "${status}" -ne 0 ]] || return 1
   assert_contains "No machine specified"
 }
 

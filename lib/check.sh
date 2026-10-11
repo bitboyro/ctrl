@@ -20,30 +20,37 @@ ctrl_check() {
   # ── machines ──────────────────────────────────────────────────────────────
   local machines_default; machines_default="$(echo "${CTRL_YAML}" | yq '.machines.default // ""')"
   if [[ -n "${machines_default}" && "${machines_default}" != "null" ]]; then
-    local found_machine; found_machine="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${machines_default}\") | .name" 2>/dev/null || true)"
+    local found_machine; found_machine="$(echo "${CTRL_YAML}" | CTRL_Q="${machines_default}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
     [[ -n "${found_machine}" && "${found_machine}" != "null" ]] || \
       errors+=("machines.default '${machines_default}' not found in machines.hosts")
   fi
 
   while IFS= read -r mname; do
     [[ -z "${mname}" || "${mname}" == "null" ]] && continue
-    local mhost; mhost="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${mname}\") | .host // \"\"")"
+    ctrl_is_valid_name "${mname}" || { errors+=("machine name '${mname}' is not a plain token (letters, digits, _ . -)"); continue; }
+    local mtag
+    while IFS= read -r mtag; do
+      [[ -z "${mtag}" || "${mtag}" == "null" ]] && continue
+      ctrl_is_valid_name "${mtag}" || errors+=("machine '${mname}': tag '${mtag}' is not a plain token")
+    done < <(echo "${CTRL_YAML}" | CTRL_Q="${mname}" yq '.machines.hosts[] | select(.name == strenv(CTRL_Q)) | .tags[]? // ""' 2>/dev/null || true)
+    local mhost; mhost="$(echo "${CTRL_YAML}" | CTRL_Q="${mname}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .host // \"\"")"
     [[ -n "${mhost}" && "${mhost}" != "null" ]] || errors+=("machines.hosts[${mname}] has no host")
   done < <(echo "${CTRL_YAML}" | yq '.machines.hosts[].name // ""' 2>/dev/null || true)
 
   # ── deployments ───────────────────────────────────────────────────────────
   local dep_default; dep_default="$(echo "${CTRL_YAML}" | yq '.deployments.default // ""')"
   if [[ -n "${dep_default}" && "${dep_default}" != "null" ]]; then
-    local found_dep; found_dep="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${dep_default}\") | .name" 2>/dev/null || true)"
+    local found_dep; found_dep="$(echo "${CTRL_YAML}" | CTRL_Q="${dep_default}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
     [[ -n "${found_dep}" && "${found_dep}" != "null" ]] || \
       errors+=("deployments.default '${dep_default}' not found in deployments.targets")
   fi
 
   while IFS= read -r dname; do
     [[ -z "${dname}" || "${dname}" == "null" ]] && continue
-    local dmachine; dmachine="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${dname}\") | .machine // \"\"")"
+    ctrl_is_valid_name "${dname}" || { errors+=("deployment name '${dname}' is not a plain token"); continue; }
+    local dmachine; dmachine="$(echo "${CTRL_YAML}" | CTRL_Q="${dname}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .machine // \"\"")"
     if [[ -n "${dmachine}" && "${dmachine}" != "null" ]]; then
-      local found_m; found_m="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${dmachine}\") | .name" 2>/dev/null || true)"
+      local found_m; found_m="$(echo "${CTRL_YAML}" | CTRL_Q="${dmachine}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
       [[ -n "${found_m}" && "${found_m}" != "null" ]] || \
         errors+=("deployment '${dname}' references unknown machine '${dmachine}'")
     fi
@@ -53,6 +60,17 @@ ctrl_check() {
   local valid_kinds="service mcp library external"
   while IFS= read -r svc; do
     [[ -z "${svc}" || "${svc}" == "null" ]] && continue
+    ctrl_is_valid_name "${svc}" || { errors+=("service name '${svc}' is not a plain token"); continue; }
+
+    # compose names end up in remote shell commands
+    local cs; cs="$(ctrl_service_field "${svc}" '.deploy.compose_service // ""')"
+    [[ -z "${cs}" || "${cs}" == "null" ]] || ctrl_is_valid_name "${cs}" || \
+      errors+=("service '${svc}': deploy.compose_service '${cs}' is not a plain token")
+    local dep
+    while IFS= read -r dep; do
+      [[ -z "${dep}" || "${dep}" == "null" ]] && continue
+      ctrl_is_valid_name "${dep}" || errors+=("service '${svc}': deploy.depends_on entry '${dep}' is not a plain token")
+    done < <(echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq '.services[] | select(.name == strenv(CTRL_Q)) | .deploy.depends_on[]? // ""' 2>/dev/null || true)
 
     local kind; kind="$(ctrl_service_field "${svc}" '.kind // "service"')"
     echo " ${valid_kinds} " | grep -q " ${kind} " || errors+=("service '${svc}': unknown kind '${kind}'")
@@ -72,24 +90,24 @@ ctrl_check() {
       fi
     fi
 
-    # smoke_tests must be registered in scripts
+    # smoke_tests must resolve to a runnable script (yaml, scripts/, or bundled)
     while IFS= read -r st; do
       [[ -z "${st}" || "${st}" == "null" ]] && continue
-      local st_found; st_found="$(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${st}\") | .name" 2>/dev/null || true)"
-      [[ -n "${st_found}" && "${st_found}" != "null" ]] || \
-        errors+=("service '${svc}': smoke_test '${st}' not found in scripts:")
-    done < <(echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | .smoke_tests[]? // \"\"")
+      _check_script_resolves "${st}" || \
+        errors+=("service '${svc}': smoke_test '${st}' is not a known script (ctrl.yaml scripts:, scripts/${st}.sh, or bundled)")
+    done < <(echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq ".services[] | select(.name == strenv(CTRL_Q)) | .smoke_tests[]? // \"\"")
 
   done < <(ctrl_service_names)
 
   # ── scripts ───────────────────────────────────────────────────────────────
   while IFS= read -r sname; do
     [[ -z "${sname}" || "${sname}" == "null" ]] && continue
-    local spath; spath="$(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${sname}\") | .path // \"\"" 2>/dev/null || true)"
+    ctrl_is_valid_name "${sname}" || { errors+=("script name '${sname}' is not a plain token"); continue; }
+    local spath; spath="$(echo "${CTRL_YAML}" | CTRL_Q="${sname}" yq ".scripts[] | select(.name == strenv(CTRL_Q)) | .path // \"\"" 2>/dev/null || true)"
     if [[ -n "${spath}" && "${spath}" != "null" ]]; then
       [[ -f "${base}/${spath}" ]] || warnings+=("script '${sname}': file not found: ${base}/${spath}")
-    else
-      errors+=("script '${sname}': missing path")
+    elif [[ ! -f "${base}/scripts/${sname}.sh" ]] && ! ctrl_bundled_exists "${sname}"; then
+      errors+=("script '${sname}': no path, no scripts/${sname}.sh and no bundled script of that name")
     fi
 
     # requires.tools — entries must not contain whitespace
@@ -98,7 +116,7 @@ ctrl_check() {
       [[ -z "${rtool}" || "${rtool}" == "null" ]] && continue
       [[ "${rtool}" =~ [[:space:]] ]] && \
         warnings+=("script '${sname}': requires.tools entry contains whitespace: '${rtool}'")
-    done < <(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${sname}\") | .requires.tools[]? // \"\"" 2>/dev/null || true)
+    done < <(echo "${CTRL_YAML}" | CTRL_Q="${sname}" yq ".scripts[] | select(.name == strenv(CTRL_Q)) | .requires.tools[]? // \"\"" 2>/dev/null || true)
 
     # requires.env — entries must be valid shell variable names
     local renv
@@ -106,9 +124,34 @@ ctrl_check() {
       [[ -z "${renv}" || "${renv}" == "null" ]] && continue
       [[ "${renv}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || \
         errors+=("script '${sname}': requires.env entry is not a valid variable name: '${renv}'")
-    done < <(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${sname}\") | .requires.env[]? // \"\"" 2>/dev/null || true)
+    done < <(echo "${CTRL_YAML}" | CTRL_Q="${sname}" yq ".scripts[] | select(.name == strenv(CTRL_Q)) | .requires.env[]? // \"\"" 2>/dev/null || true)
 
   done < <(echo "${CTRL_YAML}" | yq '.scripts[].name // ""' 2>/dev/null || true)
+
+  # ── script headers (project scripts/*.sh) ─────────────────────────────────
+  local sf
+  for sf in "${base}"/scripts/*.sh; do
+    [[ -f "${sf}" ]] || continue
+    local sn; sn="$(basename "${sf}" .sh)"
+    ctrl_is_valid_name "${sn}" || { warnings+=("scripts/${sn}.sh: name is not a plain token — ctrl run cannot address it"); continue; }
+    local hv item
+    hv="$(_script_header "${sf}" os)"
+    for item in ${hv}; do
+      [[ "${item}" == "linux" || "${item}" == "darwin" ]] || errors+=("scripts/${sn}.sh: @os '${item}' (use linux and/or darwin)")
+    done
+    for item in remote sudo dry-run; do
+      hv="$(_script_header "${sf}" "${item}")"
+      [[ -z "${hv}" || "${hv}" =~ ^(yes|no|true|false)$ ]] || errors+=("scripts/${sn}.sh: @${item} must be yes or no, got '${hv}'")
+    done
+    hv="$(_script_header "${sf}" env) $(_script_header "${sf}" env-optional)"
+    for item in ${hv}; do
+      [[ "${item}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || errors+=("scripts/${sn}.sh: @env '${item}' is not a variable name")
+    done
+    hv="$(_script_header "${sf}" requires)"
+    for item in ${hv}; do
+      ctrl_is_valid_name "${item}" || errors+=("scripts/${sn}.sh: @requires '${item}' is not a command name")
+    done
+  done
 
   # ── output ────────────────────────────────────────────────────────────────
   if [[ "${CTRL_JSON}" == "1" ]]; then
@@ -130,4 +173,13 @@ ctrl_check() {
       fail "ctrl check found ${#errors[@]} error(s)"
     fi
   fi
+}
+
+# 0 when a script name resolves: ctrl.yaml entry, scripts/<name>.sh, or bundled.
+_check_script_resolves() {
+  local n="$1" base; base="$(ctrl_project_dir)"
+  ctrl_is_valid_name "${n}" || return 1
+  [[ -n "$(echo "${CTRL_YAML}" | CTRL_Q="${n}" yq '.scripts[] | select(.name == strenv(CTRL_Q)) | .name' 2>/dev/null)" ]] && return 0
+  [[ -f "${base}/scripts/${n}.sh" ]] && return 0
+  ctrl_bundled_exists "${n}"
 }

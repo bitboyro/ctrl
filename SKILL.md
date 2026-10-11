@@ -27,8 +27,9 @@ Scope is hard. Milli does not write scripts. Seb does not deploy. Asam does not 
 All three personas **prefer ctrl commands** for every action. Raw `docker`, `ssh`, `rsync`, or `curl` is a fallback used only when ctrl has no equivalent — and the gap should be noted explicitly.
 
 - Milli prefers ctrl MCP tools. She runs raw commands only when no ctrl tool covers the need.
-- Seb's scripts invoke other scripts via `ctrl run <name>`, not `bash scripts/other.sh`, unless the target is not registered in `ctrl.yaml`.
-- Asam validates changes using `ctrl check`, `ctrl list`, `ctrl info` before reaching for raw shell.
+- Seb's scripts invoke other scripts via `ctrl run <name>` (project or bundled), not `bash scripts/other.sh`. Before writing a new script, Seb checks `ctrl run` — a bundled one may already do it (`ctrl run <name> --own` to adapt it).
+- Anything that must happen on a server is `ctrl run <name> --on <target>`, never an ad-hoc `ssh host 'bash -s' < file`.
+- Asam validates changes using `ctrl check`, `ctrl list`, `ctrl info` and `ctrl run lint` before reaching for raw shell.
 
 ---
 
@@ -37,14 +38,16 @@ All three personas **prefer ctrl commands** for every action. Raw `docker`, `ssh
 Use this skill whenever the user asks you to:
 - Create a `ctrl.yaml` for a project
 - Add, remove, or rename a service in `ctrl.yaml`
-- Add or update a named script entry
+- Add or update a script (header metadata or a `scripts:` entry), or pick a bundled one
 - Configure health checks, smoke tests, or sync paths
 - Upgrade the `ctrl.version` field
 - Explain what a `ctrl` command does
 
 ## What ctrl is
 
-`ctrl` is a versioned, YAML-driven Bash CLI for platform operations — building code and Docker images, pushing to a registry, deploying to a VM via SSH, running named scripts, and auditing operations via a structured JSON journal. It replaces hardcoded shell scripts with a single config file (`ctrl.yaml`) that drives all ops.
+`ctrl` is a versioned, YAML-driven Bash CLI for platform operations — building code and Docker images, pushing to a registry, deploying to a VM via SSH, and auditing operations via a structured JSON journal. It replaces hardcoded shell scripts with a single config file (`ctrl.yaml`) that drives all ops.
+
+Every script — the project's and a bundled library (media, sharing, server setup, docker, network, system) — runs through one command, `ctrl run`, locally or on any set of hosts.
 
 **Install (system-wide):**
 ```bash
@@ -60,13 +63,13 @@ curl -fsSL https://github.com/bitboyro/ctrl/releases/latest/download/ctrl \
 ```
 Then run `ctrl init` — it offers to add `~/.local/bin` to `PATH` automatically.
 
-**Required deps:** `yq`, `jq`, `curl`, `ssh`. `docker` only needed for build/push/deploy.
+**Required deps:** `bash` 3.2+, `yq` (mikefarah v4), `jq`, `curl`, `ssh`, `rsync`; `docker` for build/push/deploy. `ctrl doctor` checks them and prints the install command for this platform.
 
 ## ctrl.yaml structure
 
 ```yaml
 ctrl:
-  version: "0.0.1"
+  version: "0.4.0"
 
 meta:
   project: <name>
@@ -86,6 +89,7 @@ machines:
       port: 22               # optional, default 22
       key: "${SSH_KEY}"      # optional
       remote_dir: /opt/app   # optional — working dir for rs/rl/env when resolving this machine directly
+      tags: [web]            # optional — `ctrl run <script> --on @web`
 
     - name: bastion
       host: "${BASTION_HOST}"
@@ -150,13 +154,13 @@ services:
       tool: maven
       dir: sc-core
 
-scripts:
+scripts:                     # optional — scripts/<name>.sh is found without an entry
   - name: smoke-<name>
     path: scripts/smoke-<name>.sh
-    description: "Quick smoke test"
+    description: "Quick smoke test"   # overrides the script's # @description header
 
 deployments:
-  default: prod              # used by: ctrl dep, ctrl diff, ctrl sync, ctrl hc
+  default: prod              # used by: ctrl deploy, ctrl diff, ctrl sync, ctrl hc
   targets:
     - name: prod
       machine: prod-vm       # references machines.hosts[].name
@@ -171,7 +175,7 @@ deployments:
       machine: prod-vm       # same machine, different compose path
       compose_path: /opt/staging/docker-compose.yml
 
-extensions: []
+extensions: []              # .sh files inside the project; define ctrl_ext_cmd_<name>
 ```
 
 ## Service kinds
@@ -194,8 +198,8 @@ extensions: []
 - `kind: library` — `ctrl b` works; `ctrl i/p/rel` will error
 - `build.tool: skip` is still valid for backwards compat (equivalent to `kind: external` build-wise)
 - `kind: mcp` requires an `mcp:` block — `transport` is mandatory
-- `scripts:` on a service is a soft reference list — all named scripts must exist in top-level `scripts:`
-- `smoke_tests:` is a subset of `scripts:` — those run by `ctrl st`
+- Names (services, machines, deployments, scripts, compose services, tags) are plain tokens: letters, digits, `_`, `.`, `-` — `ctrl check` rejects anything else
+- `smoke_tests:` are script names (yaml, `scripts/`, or bundled) run by `ctrl run smoke`
 
 ## Defaults model
 
@@ -203,7 +207,7 @@ Two independent defaults:
 
 ```bash
 ctrl ssh              # → machines.default
-ctrl dep svc-a        # → deployments.default
+ctrl deploy svc-a     # → deployments.default
 ctrl diff             # → deployments.default
 ```
 
@@ -211,17 +215,17 @@ Override per-command by naming the target as the first arg:
 ```bash
 ctrl ssh bastion       # machine directly
 ctrl ssh prod          # deployment name → resolves to prod's machine
-ctrl dep staging api   # staging deployment
+ctrl deploy staging api   # staging deployment
 ```
 
 Change a default in ctrl.yaml in-place:
 ```bash
-ctrl default staging   # auto-detects: sets deployments.default or machines.default
+ctrl set default staging   # auto-detects: sets deployments.default or machines.default
 ```
 
 One-off override without touching ctrl.yaml:
 ```bash
-CTRL_DEPLOYMENT=staging ctrl dep api
+CTRL_DEPLOYMENT=staging ctrl deploy api
 CTRL_MACHINE=bastion ctrl ssh
 ```
 
@@ -236,18 +240,38 @@ Or manually:
 2. For each service determine: name, kind, image, build tool, build dir, compose service name, health port
 3. For external services (grafana, prometheus, etc.) use `kind: external`
 4. For shared libraries use `kind: library`
-5. Identify scripts that should be named entries
+5. Identify recurring ops tasks: check `ctrl run` for a bundled script first; otherwise `ctrl run new-script <name>`
 6. Write `ctrl.yaml`, run `ctrl check` to validate
 
 ## How to add a script
 
 ```bash
-ctrl script init backup-db    # creates scripts/backup-db.sh + registers in ctrl.yaml
-# edit scripts/backup-db.sh
-ctrl run backup-db
+ctrl run                          # does a bundled script already do it?
+ctrl run new-script backup-db     # scaffold scripts/backup-db.sh (registered in ctrl.yaml)
+# edit it — declare what it needs in the header:
+#   # @description: Nightly database backup
+#   # @requires: pg_dump rclone
+#   # @env: S3_BUCKET
+#   # @os: linux
+#   # @sudo: no
+ctrl run backup-db --check --on prod   # pre-flight only
+ctrl run backup-db --on prod           # stream it to prod and run it
 ```
 
-The generated script receives: `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR`, `CTRL_CONFIG_FILE`, `F33D_URL`, `F33D_TOKEN`.
+Header keys (first 60 lines; a `ctrl.yaml` entry overrides them): `@description`,
+`@group`, `@tags`, `@requires` (tools), `@env` (required, forwarded to `--on`
+hosts over stdin), `@env-optional`, `@os` (linux/darwin), `@remote` (no → local
+only), `@sudo` (yes → confirm or `--yes`), `@dry-run` (yes → the script handles
+`CTRL_DRY_RUN=1`), `@flags`.
+
+To adapt a bundled script: `ctrl run <name> --own` copies it into `scripts/`
+(helpers inlined — it runs standalone); `ctrl run <name> --show` then shows the
+diff against the bundled version.
+
+Scripts receive: `CTRL_PROJECT`, `CTRL_PROJECT_DIR`, `CTRL_CONFIG_FILE`,
+`CTRL_CONFIG_MERGED`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR`,
+`CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`, `CTRL_OS`, `CTRL_ARCH`, `CTRL_PKG`,
+`CTRL_DRY_RUN`, `CTRL_YES`, `CTRL_BIN`, `F33D_URL`, `F33D_TOKEN` (`CTRL_REMOTE=1` on `--on` hosts).
 
 ## Commands reference
 
@@ -265,10 +289,10 @@ ctrl release/ r    <svc|all>            # build + image + push in one step
 ### Deploy pipeline
 
 ```bash
-ctrl sync   / s    [target]             # rsync declared sync.paths to deployment target
-ctrl deploy / d    [target] [svc|all]   # docker compose pull + up on target
-ctrl redeploy/rd   [target] [svc|all]   # release + deploy
-ctrl sync-deploy/sd [target] [svc|all]  # sync + deploy
+ctrl sync   / s    [target]                          # rsync declared sync.paths to deployment target
+ctrl deploy / d    [--release] [--sync] [target] [svc|all]
+                                                     # compose pull + up; --release builds/pushes first, --sync rsyncs first
+ctrl diff          [target] [--json]                 # declared image:tag vs running containers
 ```
 
 `[target]` is a deployment name (e.g. `staging`) or omitted to use `deployments.default`.
@@ -282,50 +306,45 @@ ctrl rl / remote-logs   [target] <svc>  # docker compose logs (--follow to tail)
 ctrl e  / env      [target] <svc>       # show env vars of running container
 ```
 
-### Health & smoke tests
+### Health
 
 ```bash
-ctrl hc / health-check [svc|all]        # HTTP/TCP health check against health.port or health.url
-ctrl wr / wait-ready   <svc> [timeout]  # poll until healthy; timeout in seconds (default 60)
-ctrl st / smoke-test   [svc|all]        # run smoke_tests scripts for a service
+ctrl hc [svc|machine|all]              # HTTP health (services) / TCP (machines)
+ctrl hc <svc> --wait 60                # poll until healthy
+ctrl hc <svc|machine> --count 10       # latency stats min/avg/max/loss
+ctrl hc <svc|machine> --tcp [--port N] # TCP check
+ctrl run smoke [svc|all]               # run services[].smoke_tests
 ```
 
-### Scripts
+### Scripts — `ctrl run`
 
 ```bash
-ctrl run           <name> [args]        # run a named script locally with platform env vars injected
-ctrl cpr / copy-run <name> [target]     # pipe script to remote machine and run it there
-ctrl script init   <name>              # create scripts/<name>.sh from template + register in ctrl.yaml
-ctrl sc / scripts  [--tag <tag>]        # list scripts; optionally filter by tag
+ctrl run                               # list project + bundled scripts (--tag, --json)
+ctrl run <name> [args]                 # run locally
+ctrl run <name> --on <where>           # local | target | a,b | @tag | all — parallel, prefixed
+ctrl run <name> --check [--on …]       # pre-flight only (os, tools, env, sudo)
+ctrl run <name> --show                 # header + source; diff vs bundled for owned copies
+ctrl run <name> --own                  # copy a bundled script into scripts/
+ctrl run <name> -n                     # dry-run; bundled scripts print exact commands
+ctrl run <name> --yes                  # confirm @sudo scripts
 ```
 
-Scripts receive: `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`, `CTRL_REMOTE_DIR`,
-`CTRL_CONFIG_FILE`, `CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`, `F33D_URL`, `F33D_TOKEN`.
+Resolution: `ctrl.yaml` entry with path → `scripts/<name>.sh` → bundled. Remote
+runs stream over SSH (`bash -s`); nothing is left on the host.
 
-### Diagnostics
+Bundled library (`ctrl run <name> --help` for flags):
 
-```bash
-ctrl ping  <svc|machine>               # HTTP ping (5×) with latency stats; TCP ping for machines
-ctrl ping  <svc> --n 10                # custom count
-ctrl call  <svc> <path>                # authenticated GET against service health base URL
-ctrl call  <svc> <path> --method POST --body '{...}'
-# JWT_TOKEN env var injected automatically if set
-
-ctrl probe [svc] [--tcp]               # HTTP or TCP connectivity check
-ctrl probe <svc> --port 5432 --tcp     # check a specific port
-ctrl probe sniff <svc>                 # live tcpdump via ctrl-tools container
-ctrl probe sniff <svc> --filter 'port 5432' --save  # save capture to .local/captures/
-ctrl probe sniff <target> <svc> --duration 60       # capture on remote target
-ctrl probe sniff <svc> --host          # tcpdump on host instead of container
-ctrl probe shell                       # interactive ctrl-tools container shell
-ctrl probe shell --network <svc>       # joined to service's Docker network
-ctrl probe shell --mount ./logs:/data  # with a host dir mounted
-
-ctrl doctor                            # check all deps; show install hints
-ctrl doctor --install                  # auto-install missing deps
-```
-
-`ctrl probe sniff` and `ctrl probe shell` use the `ghcr.io/bitboyro/ctrl-tools` image (pulled on demand).
+| Group | Scripts |
+|-------|---------|
+| dev | `lint` (auto-detects linters; `--changed`, `--fix`), `loc` (`--by lang\|dir\|file`), `churn` (`--by author\|file\|hotspot`) |
+| media | `rec` (screen → small mp4, `--gif`), `gif`, `shrink --to 8M`, `snap` |
+| share | `share <path>` (LAN URL + QR, `--tunnel`), `qr` (text, URL, `--wifi`) |
+| setup (sudo, remote) | `install-docker`, `add-swap`, `harden-ssh`, `ufw-basics`, `install-tailscale`, `timezone` |
+| docker | `dsh`, `dtop`, `dclean` |
+| network | `ports`, `myip`, `certs`, `sniff`, `toolbox`, `api-call` |
+| system | `sysinfo` (`--short`), `hogs` |
+| ci | `gitlab-info`, `gitlab-runner` |
+| project / meta | `smoke`, `new-script` |
 
 ### File copy
 
@@ -340,18 +359,21 @@ ctrl cp --exclude node_modules ./site/ prod:/srv/site/
 
 ```bash
 ctrl init                              # interactive wizard — generate ctrl.yaml
-ctrl c  / check    [--json]            # validate ctrl.yaml structure and file references
-ctrl ls / list     [--json]            # list all services with kind + image:tag
+ctrl doctor        [machine] [--install]  # tools for this platform, env vars, config; or a host
+ctrl c  / check    [--json]            # validate ctrl.yaml, names, script headers
+ctrl ls / list     [services|machines] # services (default) or machines (--json)
 ctrl info          [machine|svc]       # project summary, or detail for a machine/service
-ctrl m  / machines [--json]            # list machines with deployment count
-ctrl diff          [target] [--json]   # declared image:tag vs running containers (drift)
-ctrl t  / tag      <svc> <newtag>      # update service tag in ctrl.yaml in-place
-ctrl default       <name>              # set deployments.default or machines.default in ctrl.yaml
+ctrl set tag <svc> <tag>               # update a service tag in ctrl.yaml
+ctrl set default <name>                # set deployments.default or machines.default
 ctrl h  / history  [n]                 # last n audit journal entries (default 20)
 ctrl version                           # print ctrl version
-ctrl upgrade                           # fetch latest, show changelog diff, replace binary
+ctrl upgrade                           # latest release: changelog, SHA256-verified replace
 ctrl completion    <bash|zsh>          # print shell completion script
 ```
+
+Removed in 0.4 (each prints its replacement): `cpr`, `scripts`, `script init`,
+`redeploy`, `sync-deploy`, `wait-ready`, `ping`, `probe`, `call`, `smoke-test`,
+`machines`, `tag`, `default`, `gitlab-*`.
 
 ### MCP server
 
@@ -368,9 +390,10 @@ Register in Claude Desktop or any MCP client:
 }
 ```
 
-MCP tools: `list_services`, `list_machines`, `build_service`, `deploy_service`,
-`release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`,
-`check_config`, `update_tag`, `get_history`
+MCP tools: `list_services`, `list_machines`, `get_info`, `check_config`,
+`build_service`, `release_service`, `deploy_service`, `diff_deployment`,
+`health_check`, `run_list`, `run` (`name`, `args`, `on`, `check`, `dry_run`,
+`yes` — sudo scripts need `yes: true`), `update_tag`, `get_history`.
 
 ### Global flags
 
@@ -378,7 +401,7 @@ MCP tools: `list_services`, `list_machines`, `build_service`, `deploy_service`,
 |------|-------|--------|
 | `--dry-run` | `-n` | Print commands, no execution |
 | `--verbose` | `-v` | Extra debug output |
-| `--json` | | JSON output (`list`, `hc`, `info`, `diff`, `check`, `sc`, `machines`) |
+| `--json` | | JSON output (`list`, `info`, `diff`, `check`, `run` listing) |
 | `--config <path>` | | Override ctrl.yaml location |
 | `--follow` | | Tail logs (with `rl`) |
 

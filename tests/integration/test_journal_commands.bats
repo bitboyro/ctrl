@@ -75,18 +75,18 @@ SH
 
 # ── ctrl tag ──────────────────────────────────────────────────────────────
 
-@test "ctrl tag writes a journal entry with command=tag" {
-  run_ctrl tag api v2.0.0
+@test "ctrl tag writes a journal entry with command="set tag"" {
+  run_ctrl set tag api v2.0.0
   assert_success
 
   local entry; entry="$(_last_journal_entry)"
-  echo "${entry}" | jq -e '.command == "tag"'
+  echo "${entry}" | jq -e '.command == "set tag"'
   echo "${entry}" | jq -e '(.services | test("api"))'
   echo "${entry}" | jq -e '.exit_code == 0'
 }
 
 @test "ctrl tag exits non-zero and writes no journal when service does not exist" {
-  run_ctrl tag nonexistent v9.9.9
+  run_ctrl set tag nonexistent v9.9.9
   assert_failure
 
   # fail() calls exit 1 immediately — with_journal never gets to flush, so no entry.

@@ -7,7 +7,8 @@ OUT_DIR="${CTRL_DIR}/dist"
 OUT="${OUT_DIR}/ctrl"
 VERSION="$(cat "${CTRL_DIR}/VERSION" 2>/dev/null || echo "unknown")"
 
-LIBS=(core services deploy remote health audit ext gitlab templates init check info mcp probe doctor cp)
+# platform first: core.sh calls ctrl_platform_detect when it loads
+LIBS=(platform core services deploy remote health audit ext scripts init check info help mcp doctor cp)
 
 mkdir -p "${OUT_DIR}"
 
@@ -28,6 +29,40 @@ mkdir -p "${OUT_DIR}"
     echo ""
   done
 
+  # Embed the tool registry.
+  echo "# ════════════════════════════════════════════════════════════════════════════"
+  echo "# lib/tools.yaml — embedded"
+  echo "# ════════════════════════════════════════════════════════════════════════════"
+  echo "_ctrl_embedded_tools_yaml() {"
+  echo "cat <<'CTRL_TOOLS_YAML_EOF'"
+  cat "${CTRL_DIR}/lib/tools.yaml"
+  echo "CTRL_TOOLS_YAML_EOF"
+  echo "}"
+  echo ""
+
+  # Embed bundled scripts: _ctrl_embedded_bundled lists names, or prints one file.
+  echo "# ════════════════════════════════════════════════════════════════════════════"
+  echo "# bundled/*.sh — embedded"
+  echo "# ════════════════════════════════════════════════════════════════════════════"
+  echo "_ctrl_embedded_bundled() {"
+  echo "  case \"\${1:-}\" in"
+  _names=""
+  for _f in "${CTRL_DIR}"/bundled/*.sh; do
+    [[ -f "${_f}" ]] || continue
+    _b="$(basename "${_f}")"
+    [[ "${_b}" == _* ]] || _names+="${_b%.sh} "
+    echo "    ${_b})"
+    echo "cat <<'CTRL_BUNDLED_EOF'"
+    cat "${_f}"
+    echo "CTRL_BUNDLED_EOF"
+    echo "      ;;"
+  done
+  echo "    \"\") echo \"${_names% }\" ;;"
+  echo "    *) return 1 ;;"
+  echo "  esac"
+  echo "}"
+  echo ""
+
   # Embed completion scripts so dist/ctrl is fully self-contained.
   for _csh in bash zsh; do
     _csh_upper="$(echo "${_csh}" | tr '[:lower:]' '[:upper:]')"
@@ -46,7 +81,7 @@ mkdir -p "${OUT_DIR}"
   echo "# ctrl.sh — command dispatcher"
   echo "# ════════════════════════════════════════════════════════════════════════════"
   # strip: shebang, set -euo pipefail, CTRL_SELF_DIR block, CTRL_VERSION=, source lines
-  grep -v '^#!/\|^set -euo pipefail\|^CTRL_SELF_DIR=\|^CTRL_VERSION=\|^source ' "${CTRL_DIR}/ctrl.sh"
+  grep -v '^#!/\|^set -euo pipefail\|^CTRL_VERSION=\|^source ' "${CTRL_DIR}/ctrl.sh"
 
 } > "${OUT}"
 

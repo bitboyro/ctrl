@@ -22,8 +22,8 @@ _cp_parse_endpoint() {
   # Check if prefix before ':' is a known machine name (not a drive letter like C:)
   local prefix="${raw%%:*}"
   local suffix="${raw#*:}"
-  if [[ "${raw}" == *":"* && "${prefix}" != "${raw}" ]] && \
-     yq e ".machines.hosts[] | select(.name == \"${prefix}\") | .name" "${CTRL_CONFIG_FILE}" 2>/dev/null | grep -q .; then
+  # is_machine reads the merged config, so .local/ overrides count
+  if [[ "${raw}" == *":"* && "${prefix}" != "${raw}" ]] && is_machine "${prefix}"; then
     _CP_MACHINE="${prefix}"
     _CP_PATH="${suffix}"
   else
@@ -35,8 +35,10 @@ _cp_parse_endpoint() {
 # Build the rsync -e "ssh ..." rsh string for the current resolved machine.
 # Echoes a quoted string suitable for: rsync -e "$(_cp_rsh_string)"
 _cp_rsh_string() {
-  local args="ssh -p ${CTRL_META_SSH_PORT} -o StrictHostKeyChecking=accept-new"
-  [[ -n "${CTRL_META_SSH_KEY:-}" ]] && args="${args} -i ${CTRL_META_SSH_KEY}"
+  # rsync splits -e on whitespace (honouring quotes): quote the key path
+  local args
+  args="ssh -p $(printf '%q' "${CTRL_META_SSH_PORT}") -o StrictHostKeyChecking=accept-new"
+  [[ -n "${CTRL_META_SSH_KEY:-}" ]] && args="${args} -i $(printf '%q' "${CTRL_META_SSH_KEY}")"
   echo "${args}"
 }
 
@@ -54,7 +56,7 @@ _cp_rsync() {
   fi
 
   if [[ -n "${rsh}" && -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    _require_sshpass
     msg_verbose "rsync (password auth) ${*}"
     RSYNC_PASSWORD="${CTRL_META_SSH_PASSWORD}" \
       "${CTRL_SSHPASS_CMD}" -p "${CTRL_META_SSH_PASSWORD}" \
@@ -66,7 +68,7 @@ _cp_rsync() {
 }
 
 ctrl_cp() {
-  has_cmd rsync || fail "rsync is required for ctrl cp. Install: brew install rsync / apt-get install rsync"
+  require_cmd rsync
 
   # ── parse flags ──────────────────────────────────────────────────────────
   CP_RSYNC_FLAGS=(-a)
@@ -144,8 +146,8 @@ ctrl_cp() {
     # remote → remote (local bounce)
     msg_verbose "cp ${src_machine}:${src_path} → ${dst_machine}:${dst_path} (via local tmp)"
     local tmp_dir; tmp_dir="$(mktemp -d)"
-    # shellcheck disable=SC2064
-    trap "rm -rf '${tmp_dir}'" EXIT
+    _CP_TMP_DIR="${tmp_dir}"
+    trap 'rm -rf "${_CP_TMP_DIR}"' EXIT
 
     resolve_machine "${src_machine}"
     local src_rsh; src_rsh="$(_cp_rsh_string)"

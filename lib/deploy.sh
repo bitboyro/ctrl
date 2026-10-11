@@ -19,25 +19,26 @@ resolve_deployment() {
     [[ -n "${target_name}" && "${target_name}" != "null" ]] || \
       fail "No deployment target specified and no deployments.default set in ctrl.yaml"
   fi
+  ctrl_valid_name "${target_name}" "deployment name"
 
-  local found; found="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .name" 2>/dev/null || true)"
+  local found; found="$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]] || \
     fail "Deployment target '${target_name}' not found in ctrl.yaml deployments.targets"
 
   CTRL_DEPLOY_NAME="${target_name}"
 
   # Resolve the machine referenced by this deployment
-  local machine_name; machine_name="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .machine // \"\"")"
+  local machine_name; machine_name="$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .machine // \"\"")"
   if [[ -n "${machine_name}" && "${machine_name}" != "null" ]]; then
     resolve_machine "${machine_name}"
   fi
 
   # Allow inline SSH overrides on a deployment target (backwards compat / staging)
   local t_ssh_host t_ssh_user t_ssh_port t_ssh_key
-  t_ssh_host="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_host // \"\"")")"
-  t_ssh_user="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_user // \"\"")")"
-  t_ssh_port="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_port // \"\"")")"
-  t_ssh_key="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .ssh_key // \"\"")")"
+  t_ssh_host="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .ssh_host // \"\"")")"
+  t_ssh_user="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .ssh_user // \"\"")")"
+  t_ssh_port="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .ssh_port // \"\"")")"
+  t_ssh_key="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .ssh_key // \"\"")")"
 
   [[ -n "${t_ssh_host}" && "${t_ssh_host}" != "null" ]] && CTRL_META_SSH_HOST="${t_ssh_host}"
   [[ -n "${t_ssh_user}" && "${t_ssh_user}" != "null" ]] && CTRL_META_SSH_USER="${t_ssh_user}"
@@ -47,15 +48,15 @@ resolve_deployment() {
   [[ -n "${t_ssh_key}"  && "${t_ssh_key}"  != "null" ]] && CTRL_META_SSH_KEY="${t_ssh_key}"
 
   local t_compose t_cwd
-  t_compose="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .compose_path // \"\"")")"
-  t_cwd="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .cwd // \"\"")")"
+  t_compose="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .compose_path // \"\"")")"
+  t_cwd="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .cwd // \"\"")")"
   if [[ -n "${t_compose}" && "${t_compose}" != "null" ]]; then
     # shellcheck disable=SC2034
     CTRL_META_COMPOSE_PATH="${t_compose}"
     CTRL_META_REMOTE_DIR="$(dirname "${t_compose}")"
   fi
   local t_remote_dir
-  t_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .remote_dir // \"\"")")"
+  t_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .remote_dir // \"\"")")"
   # shellcheck disable=SC2034
   [[ -n "${t_remote_dir}" && "${t_remote_dir}" != "null" ]] && CTRL_META_REMOTE_DIR="${t_remote_dir}"
 
@@ -69,15 +70,15 @@ resolve_deployment() {
   while IFS= read -r p; do
     [[ -z "${p}" || "${p}" == "null" ]] && continue
     CTRL_DEPLOY_SYNC_PATHS+=("${p}")
-  done < <(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${target_name}\") | .sync.paths[]? // \"\"")
+  done < <(echo "${CTRL_YAML}" | CTRL_Q="${target_name}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .sync.paths[]? // \"\"")
 
   msg_verbose "Deployment target: ${CTRL_DEPLOY_NAME} → ${CTRL_META_SSH_USER}@${CTRL_META_SSH_HOST}:${CTRL_META_REMOTE_DIR}"
 }
 
 is_deployment_target() {
   local candidate="${1:-}"
-  [[ -z "${candidate}" ]] && return 1
-  local found; found="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${candidate}\") | .name" 2>/dev/null || true)"
+  ctrl_is_valid_name "${candidate}" || return 1
+  local found; found="$(echo "${CTRL_YAML}" | CTRL_Q="${candidate}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]]
 }
 
@@ -105,12 +106,14 @@ resolve_ssh_target() {
 _svc_compose_service() {
   local svc="$1"
   local cs; cs="$(ctrl_service_field "${svc}" '.deploy.compose_service // ""')"
-  [[ -n "${cs}" && "${cs}" != "null" ]] && printf '%s' "${cs}" || printf '%s' "${svc}"
+  [[ -n "${cs}" && "${cs}" != "null" ]] || cs="${svc}"
+  ctrl_valid_name "${cs}" "compose service name"
+  printf '%s' "${cs}"
 }
 
 _svc_compose_deps() {
   local svc="$1"
-  echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | .deploy.depends_on[]? // \"\"" 2>/dev/null || true
+  echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq ".services[] | select(.name == strenv(CTRL_Q)) | .deploy.depends_on[]? // \"\"" 2>/dev/null || true
 }
 
 _remote_export_block() {
@@ -139,6 +142,7 @@ _remote_dep_services() {
   for svc in "$@"; do
     while IFS= read -r dep; do
       [[ -z "${dep}" || "${dep}" == "null" ]] && continue
+      ctrl_valid_name "${dep}" "compose dependency name"
       out+=("${dep}")
     done < <(_svc_compose_deps "${svc}")
   done
@@ -173,7 +177,7 @@ sync_files() {
   local remote_dir="${CTRL_META_REMOTE_DIR}"
   local base; base="$(dirname "${CTRL_CONFIG_FILE}")"
   local sync_base
-  sync_base="$(echo "${CTRL_YAML}" | yq ".deployments.targets[] | select(.name == \"${CTRL_DEPLOY_NAME}\") | .sync.base // \"\"")"
+  sync_base="$(echo "${CTRL_YAML}" | CTRL_Q="${CTRL_DEPLOY_NAME}" yq ".deployments.targets[] | select(.name == strenv(CTRL_Q)) | .sync.base // \"\"")"
   [[ -n "${sync_base}" ]] && base="${base}/${sync_base}"
 
   if [[ "${#CTRL_DEPLOY_SYNC_PATHS[@]}" -eq 0 ]]; then
@@ -215,7 +219,7 @@ diff_deployment() {
       local declared_img; declared_img="$(ctrl_service_field "${svc}" '.image // ""')"
       local declared_tag; declared_tag="$(ctrl_service_field "${svc}" '.tag // "latest"')"
       local compose_svc; compose_svc="$(_svc_compose_service "${svc}")"
-      local running_tag; running_tag="$(echo "${raw_json}" | jq -r ".[] | select(.Service == \"${compose_svc}\") | .Tag // \"\"" 2>/dev/null || echo "")"
+      local running_tag; running_tag="$(echo "${raw_json}" | jq -r --arg s "${compose_svc}" '.[] | select(.Service == $s) | .Tag // ""' 2>/dev/null || echo "")"
       local status
       if [[ -z "${running_tag}" ]]; then
         status="not_running"
@@ -237,7 +241,7 @@ diff_deployment() {
     local declared_img; declared_img="$(ctrl_service_field "${svc}" '.image // ""')"
     local declared_tag; declared_tag="$(ctrl_service_field "${svc}" '.tag // "latest"')"
     local compose_svc; compose_svc="$(_svc_compose_service "${svc}")"
-    local running_tag; running_tag="$(echo "${raw_json}" | jq -r ".[] | select(.Service == \"${compose_svc}\") | .Tag // \"\"" 2>/dev/null || echo "")"
+    local running_tag; running_tag="$(echo "${raw_json}" | jq -r --arg s "${compose_svc}" '.[] | select(.Service == $s) | .Tag // ""' 2>/dev/null || echo "")"
     local status_label color
     if [[ -z "${running_tag}" ]]; then
       status_label="NOT RUNNING"; color="${YELLOW}"

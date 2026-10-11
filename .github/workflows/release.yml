@@ -20,8 +20,13 @@ jobs:
       - name: Build single-file ctrl
         run: bash build.sh
 
-      - name: Upload release asset
+      - name: Checksum (verified by install.sh and ctrl upgrade)
+        run: (cd dist && sha256sum ctrl > ctrl.sha256)
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ctrl
+          files: |
+            dist/ctrl
+            dist/ctrl.sha256
           generate_release_notes: true

@@ -14,7 +14,7 @@ teardown() { teardown_test_dir; }
   local i name script registered
   for ((i = 0; i < PROPERTY_ITERATIONS; i++)); do
     name="$(rand_script_name)-${i}"
-    run_ctrl script init "${name}"
+    run_ctrl run new-script "${name}"
     [[ "${status}" -eq 0 ]] || { echo "iter ${i}: status=${status} output=${output}"; return 1; }
     script="${TEST_TMP}/scripts/${name}.sh"
     [[ -x "${script}" ]] || { echo "iter ${i}: not executable"; return 1; }
@@ -31,7 +31,7 @@ teardown() { teardown_test_dir; }
   for ((i = 0; i < 10; i++)); do
     deploy_name="$(rand_word 6)-${i}"
     mkdir -p "${TEST_TMP}/deployments/${deploy_name}/ops"
-    run_ctrl script init "tmpl${i}"
+    run_ctrl run new-script "tmpl${i}"
     script_path="${TEST_TMP}/deployments/${deploy_name}/ops/run.sh"
     cp "${TEST_TMP}/scripts/tmpl${i}.sh" "${script_path}"
     run bash -c "

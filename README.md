@@ -1,8 +1,18 @@
 # ctrl
 
 YAML-driven platform operations CLI. One config file (`ctrl.yaml`) drives building Docker images,
-pushing to a registry, deploying to a VM over SSH, running named scripts, and auditing everything
-to a structured journal.
+pushing to a registry, deploying to a VM over SSH, and auditing everything to a structured journal.
+
+One command runs every script — yours, and a bundled library of useful ones (screen recording,
+Docker install, sharing a folder with a QR code, server hardening, …) — on this machine or on any
+set of hosts in parallel:
+
+```bash
+ctrl run                              # everything you can run
+ctrl run rec --gif                    # record the screen → small mp4 + gif
+ctrl run install-docker --on staging  # set up a VM
+ctrl run sysinfo --on all             # every machine at once
+```
 
 ## Install
 
@@ -24,24 +34,27 @@ Then run `ctrl init` — it offers to add `~/.local/bin` to `PATH` automatically
 
 | Tool | Required | Purpose |
 |------|----------|---------|
-| `yq` | always | YAML parsing |
+| `bash` | always | 3.2+ (stock macOS works); remote hosts need bash for `run --on` |
+| `yq` | always | YAML parsing — mikefarah yq v4.18+ (not the pip package) |
 | `jq` | always | JSON processing |
-| `curl` | always | health checks, GitLab API, f33d notifications |
-| `ssh` | always | remote access (`ssh`, `rs`, `rl`, `env`) |
-| `docker` | build/push/deploy/probe | image build, push, compose ops, and running ctrl-tools |
-| `rsync` | sync commands | file sync to deployment targets |
-| `nc` | `ctrl probe --tcp` | TCP connectivity checks (pre-installed on most systems) |
-| `tcpdump` | `ctrl probe sniff --host` | host-level packet capture (optional; container mode uses ctrl-tools) |
+| `curl` | always | health checks, downloads |
+| `ssh` | always | remote access (`ssh`, `rs`, `rl`, `env`, `run --on`) |
+| `docker` | build/push/deploy | image build, push, compose ops |
+| `rsync` | sync, cp | file sync to deployment targets |
+| `nc` | `hc --tcp` | TCP checks |
 | `sshpass` | optional | password-based SSH machines |
 
-Run `ctrl doctor` to verify all deps and get install hints for anything missing.
+`ctrl doctor` checks all of them for your platform (macOS/Linux, amd64/arm64,
+brew/apt/dnf/apk) and prints the exact install command; `ctrl doctor --install`
+runs it. Tools that only a script needs are checked by `ctrl run <name> --check`.
 
 ## Quick start
 
 ```bash
 ctrl init           # interactive wizard — generates ctrl.yaml
-ctrl check          # validate the config
-ctrl list           # show services with kind and image:tag
+ctrl doctor         # tools, env vars, config
+ctrl list           # services with kind and image:tag
+ctrl run            # scripts: your project's and the bundled library
 ```
 
 ## Shell completion
@@ -60,7 +73,7 @@ ctrl completion zsh > "${fpath[1]}/_ctrl"
 
 ```yaml
 ctrl:
-  version: "0.3.0"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.4.0"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -78,6 +91,7 @@ machines:
       port: 22
       cwd: /root                     # optional interactive SSH start dir for `ctrl ssh prod-vm`
       remote_dir: /opt/my-platform  # optional — working dir for rs/rl/env when resolving this machine directly
+      tags: [web]                   # optional — `ctrl run <script> --on @web`
       # password: "${VM_PASSWORD}"  # optional — requires sshpass
 
 services:
@@ -104,7 +118,7 @@ services:
     health:
       port: 3000
 
-scripts:
+scripts:                          # optional — scripts/<name>.sh is found without an entry
   - name: smoke-api
     path: scripts/smoke-api.sh
     description: "Quick API smoke test"
@@ -155,8 +169,8 @@ machines:
       password: "${LEGACY_PASSWORD}"   # resolved from .local/secrets.env
 ```
 
-This requires `sshpass` on the local machine
-(`brew install sshpass` / `apt-get install sshpass`). Password values are
+This requires `sshpass` on the local machine (`ctrl doctor` shows the
+install command for your platform). Password values are
 redacted from `--dry-run` output and never appear in logs.
 
 ### Interactive SSH Start Directory
@@ -209,12 +223,13 @@ ctrl release all        # release every service
 ## Deploy pipeline
 
 ```bash
-ctrl deploy             # deploy all services to default target
-ctrl deploy api         # deploy one service
-ctrl deploy staging api # deploy to a named target
-ctrl sync               # rsync files to the deployment target
-ctrl sync-deploy        # sync + deploy in one step (shorthand: ctrl sd)
-ctrl redeploy api       # release + deploy (shorthand: ctrl rd api)
+ctrl deploy                   # deploy all services to default target
+ctrl deploy api               # deploy one service
+ctrl deploy staging api       # deploy to a named target
+ctrl deploy --release api     # build + image + push first
+ctrl deploy --sync            # rsync the target's sync.paths first
+ctrl sync                     # rsync only
+ctrl diff                     # declared vs running image:tag
 ```
 
 ## Remote & SSH
@@ -231,61 +246,134 @@ ctrl remote-logs api --follow   # tail logs
 ctrl env api            # show env vars of running container (shorthand: ctrl e api)
 ```
 
-## Health & smoke tests
+## Health
 
 ```bash
-ctrl health-check       # health-check all health-configured, non-library services (shorthand: ctrl hc)
-ctrl health-check api
-ctrl wait-ready api 60  # poll until healthy, 60s timeout (shorthand: ctrl wr)
-ctrl smoke-test api     # run smoke_tests scripts for a service (shorthand: ctrl st)
+ctrl hc                       # every service with health config (HTTP)
+ctrl hc api                   # one service
+ctrl hc api --wait 60         # poll until healthy, up to 60 s
+ctrl hc api --count 10        # latency stats: min/avg/max/loss
+ctrl hc prod-vm               # machine: TCP on its SSH port
+ctrl hc prod-vm --port 5432   # is postgres reachable?
+ctrl run smoke api            # run the service's smoke_tests scripts
 ```
 
-## Scripts
+## Scripts — `ctrl run`
+
+`ctrl run` is the one command for every script. A name resolves, first match wins, to:
+
+1. a `ctrl.yaml` `scripts[]` entry with a `path`
+2. `scripts/<name>.sh` in the project (auto-discovered, no entry needed)
+3. a bundled script shipped inside ctrl
+
+The same small set of modifiers works on every script:
+
+| Modifier | Effect |
+|----------|--------|
+| `--on <where>` | `local` · a deployment or machine · `a,b` · `@tag` · `all` — several targets run in parallel with host-prefixed output and a per-host summary; exit code is non-zero if any fails |
+| `--check` | pre-flight only (OS, tools, env vars, sudo) on every host |
+| `--show` | header and source; for a project copy of a bundled script, the diff against the bundled version |
+| `--own` | copy a bundled script into `scripts/` — edit it; `ctrl run <name>` now uses your copy |
+| `-n`, `--dry-run` | print what would run; bundled scripts print their exact underlying commands |
+| `--yes` | confirm scripts that change the system with sudo |
+
+Everything else after the name goes to the script, and everything after `--` always does.
 
 ```bash
-ctrl script init backup-db      # create scripts/backup-db.sh + register in ctrl.yaml
-ctrl run backup-db              # run a named script locally
-ctrl cpr backup-db              # pipe script to remote and run it there (shorthand for copy-run)
-ctrl cpr backup-db staging      # run on a named deployment target
-ctrl scripts                    # list scripts (shorthand: ctrl sc)
-ctrl scripts --tag deploy       # filter by tag
+ctrl run                                   # list, grouped; --tag <t> filters, --json
+ctrl run backup-db                         # a project script
+ctrl run backup-db --on prod               # stream it to prod and run it there
+ctrl run cleanup --on @web --check         # would it run on every web host?
+ctrl run rec --own                         # make the bundled recorder yours
+ctrl run new-script cleanup                # scaffold scripts/cleanup.sh
 ```
 
-Generated scripts follow a structured template — path detection (`SCRIPT_DIR`,
-`CTRL_ROOT`), deployment context detection (`DEPLOYMENT_DIR`, `DEPLOYMENT_NAME`
-when placed under `<deployment>/ops/`), automatic core library loading with
-fallback stubs, `--help` / `--dry-run` / `--output` parsing, an entry-point
-guard (sourceable or executable), and a cleanup trap.
+Remote runs stream the script over SSH (`bash -s`); nothing is left on the host.
+`@env` variables set locally travel on stdin, never on a command line.
 
-To customize: drop your own template at `scripts/templates/ctrl-script.sh` in
-the project root — `ctrl script init` will use it instead of the built-in
-template (with `__NAME__` substituted).
+### Script headers
 
-Scripts can carry optional `tags` for grouping:
+Metadata lives in the script itself (first 60 lines). A `ctrl.yaml` entry with
+the same name overrides any of it.
 
-```yaml
-scripts:
-  - name: smoke-api
-    path: scripts/smoke-api.sh
-    tags: [smoke, deploy]
+```bash
+#!/usr/bin/env bash
+# @description: Nightly database backup to S3
+# @group: ops
+# @requires: pg_dump rclone          # checked before running, locally and on every --on host
+# @env: S3_BUCKET                    # must be set; forwarded to --on hosts
+# @env-optional: RCLONE_FLAGS        # forwarded when set
+# @os: linux                         # linux and/or darwin
+# @sudo: no                          # yes → confirmation (or --yes) first
+# @remote: yes                       # no → refuses --on
+# @dry-run: no                       # yes → runs under -n with CTRL_DRY_RUN=1
+# @tags: backup nightly
 ```
 
-Scripts receive `CTRL_PROJECT`, `CTRL_SSH_HOST`, `CTRL_REGISTRY`,
-`CTRL_REMOTE_DIR`, `CTRL_CONFIG_FILE`, `CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`,
-`F33D_URL`, and `F33D_TOKEN` as environment variables.
+A missing tool is reported with the install command for that host's platform.
+
+Scripts receive `CTRL_PROJECT`, `CTRL_PROJECT_DIR`, `CTRL_CONFIG_FILE`,
+`CTRL_CONFIG_MERGED` (with `.local/` overrides), `CTRL_SSH_HOST`, `CTRL_REGISTRY`,
+`CTRL_REMOTE_DIR`, `CTRL_MACHINE_NAME`, `CTRL_DEPLOY_NAME`, `CTRL_OS`,
+`CTRL_ARCH`, `CTRL_PKG`, `CTRL_DRY_RUN`, `CTRL_YES`, `CTRL_BIN`, `F33D_URL` and
+`F33D_TOKEN`; remote runs also get `CTRL_REMOTE=1`. Hooks (`hooks.pre` /
+`hooks.post` in `ctrl.yaml`) still run around local runs.
+
+`ctrl run new-script <name>` writes a structured template (path and
+deployment-context detection, `--help` / `--dry-run` parsing, cleanup trap).
+Drop your own template at `scripts/templates/ctrl-script.sh` to replace it
+(`__NAME__` is substituted).
+
+### The bundled library
+
+Every bundled script works with no arguments (settings are inferred), prints its
+exact commands under `-n`, asks before changing the system, and runs remotely
+with `--on` unless it needs your desktop. `ctrl run <name> --help` shows its flags.
+
+| Group | Script | What it does |
+|-------|--------|--------------|
+| dev | `lint` | Detects file types and runs the right linter for each: shellcheck (honours `.shellcheckrc`), hadolint, yamllint (or a yq parse), actionlint, jq, ruff, eslint, gofmt/go vet, `ctrl check`; `--changed` (only files changed vs main), `--fix`, `--only`, `--list` shows missing linters with an install hint |
+| | `loc` | Lines of code, comments and blanks per language, `--by dir`, `--by file --top N`, `--json`; pure awk, no dependencies |
+| | `churn` | Git activity: lines added/removed `--by author`, `--by file`, or `--by hotspot` (changes × size) over `--since '30 days'` |
+| media | `rec` | Screen → small mp4 (15 fps, half scale, CRF 30 ≈ 5 MB/min); screen detected via avfoundation, x11grab or wf-recorder; `--gif`, `--audio`, `--region`, `--time` |
+| | `gif` | Video → sharp GIF with a two-pass palette |
+| | `shrink` | Re-encode to fit a size: `--to 8M` |
+| | `snap` | Screenshot (full, `--region`, `--window`), `--clip` to clipboard |
+| share | `share` | Serve a file/folder on the LAN with a terminal QR code; `--tunnel` for a public URL |
+| | `qr` | QR code for text, URLs, or `--wifi SSID --password P` |
+| setup | `install-docker` | Docker Engine + compose from download.docker.com, repo key fingerprint verified; Colima on macOS |
+| | `add-swap` | Swap file sized from RAM, persisted, low swappiness |
+| | `harden-ssh` | Key-only SSH with lock-out guards and `sshd -t` validation |
+| | `ufw-basics` | Deny incoming, allow the SSH port you are on plus `--allow` ports |
+| | `install-tailscale` | Signed package repo; joins with `TS_AUTHKEY` passed as a file |
+| | `timezone` | Show/set the timezone; no argument infers it from your IP |
+| docker | `dsh` | Fuzzy-pick a container and shell into it |
+| | `dtop` | CPU/memory/network/IO per container |
+| | `dclean` | Show what can be reclaimed, then prune (asks) |
+| network | `ports` | What listens where, and which process; `--kill PORT` |
+| | `myip` | Local and public IP with location |
+| | `certs` | TLS expiry/issuer/names — defaults to every https endpoint in `ctrl.yaml` |
+| | `sniff` | tcpdump on a service's container network (ctrl-tools image), `--host`, `--save` |
+| | `toolbox` | Shell in the ctrl-tools container on a service's network |
+| | `api-call` | REST call to a service; `JWT_TOKEN` sent as Bearer, kept out of `ps` |
+| system | `sysinfo` | One-screen machine summary; `--short` for one line per host |
+| | `hogs` | Biggest folders, hungriest processes, fullest disks |
+| ci | `gitlab-info` | GitLab project details (`GITLAB_TOKEN`) |
+| | `gitlab-runner` | Install (SHA256-verified) and register a runner |
+| project | `smoke` | Run `services[].smoke_tests` |
+| meta | `new-script` | Scaffold a project script |
 
 ## Config & info
 
 ```bash
-ctrl check              # validate ctrl.yaml (--json for machine-readable)
+ctrl check              # validate ctrl.yaml, names, script headers (--json)
 ctrl info               # project summary
 ctrl info prod-vm       # machine detail
 ctrl info api           # service detail
-ctrl machines           # list machines with deployment count (shorthand: ctrl m)
-ctrl diff               # declared vs running image:tag on default target
-ctrl diff staging       # drift on a named target
-ctrl tag api v1.2.3     # update tag in ctrl.yaml in-place (shorthand: ctrl t)
-ctrl default staging    # set deployments.default in ctrl.yaml
+ctrl list machines      # machines with deployment count
+ctrl set tag api v1.2.3 # update a service tag in ctrl.yaml
+ctrl set default staging
+ctrl doctor prod        # check a host: OS, docker, compose v2, rsync, sudo
 ```
 
 ## Defaults and overrides
@@ -307,7 +395,7 @@ CTRL_DEPLOYMENT=staging ctrl deploy api
 Change the default permanently:
 
 ```bash
-ctrl default staging    # auto-detects machine vs deployment
+ctrl set default staging    # auto-detects machine vs deployment
 ```
 
 ## Global flags
@@ -316,7 +404,7 @@ ctrl default staging    # auto-detects machine vs deployment
 |------|-------|--------|
 | `--dry-run` | `-n` | Print commands, no execution |
 | `--verbose` | `-v` | Extra debug output |
-| `--json` | | JSON output for `list`, `hc`, `info`, `diff`, `check`, `sc`, `machines` |
+| `--json` | | JSON output for `list`, `info`, `diff`, `check`, `run` (listing) |
 | `--config <path>` | | Override `ctrl.yaml` location |
 | `--follow` | | Tail logs (with `rl`) |
 
@@ -361,9 +449,12 @@ Register in Claude Desktop:
 }
 ```
 
-**Tools:** `list_services`, `list_machines`, `build_service`, `deploy_service`,
-`release_service`, `diff_deployment`, `health_check`, `run_script`, `get_info`,
-`check_config`, `update_tag`, `get_history`
+**Tools:** `list_services`, `list_machines`, `get_info`, `check_config`,
+`build_service`, `release_service`, `deploy_service`, `diff_deployment`,
+`health_check`, `run_list`, `run` (`name`, `args`, `on`, `check`, `dry_run`,
+`yes`), `update_tag`, `get_history`. Every parameter is validated; scripts that
+use sudo need `yes: true`. A failing tool returns `{"error": …}` — the server
+keeps running. The server also works outside a project (bundled scripts).
 
 ## Versioning
 
@@ -372,14 +463,14 @@ Register in Claude Desktop:
 
 ```yaml
 ctrl:
-  version: "0.3.0"
+  version: "0.4.0"
 ```
 
 `ctrl check` warns when the running ctrl version doesn't match the declared
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.3.0     # specific version
+./install.sh v0.4.0     # specific version
 ./install.sh            # latest from main
 ```
 
@@ -410,40 +501,34 @@ ctrl cp --exclude node_modules ./site/ prod:/srv/site/
 and remote/remote transfers. Remote endpoints use `machine-name:/path` and
 reuse the SSH settings from `machines.hosts[]` in `ctrl.yaml`.
 
-## Diagnostics
+## Migrating from 0.3
 
-Packet capture is exposed as `ctrl probe sniff`. There is no standalone
-`ctrl sniff`, `ctrl capture`, or `ctrl bench` command in the current release.
+Removed commands print their replacement when you use them.
 
-```bash
-ctrl ping api                          # HTTP ping api's health URL (5 times, with latency)
-ctrl ping api --n 10                   # 10 pings
-ctrl ping prod-vm                      # TCP ping machine on port 22
+| 0.3 | 0.4 |
+|-----|-----|
+| `ctrl cpr <s> [target]` | `ctrl run <s> --on <target>` |
+| `ctrl scripts` / `sc` | `ctrl run` |
+| `ctrl script init <n>` | `ctrl run new-script <n>` |
+| `ctrl redeploy` / `rd` | `ctrl deploy --release` |
+| `ctrl sync-deploy` / `sd` | `ctrl deploy --sync` |
+| `ctrl wait-ready <s> N` | `ctrl hc <s> --wait N` |
+| `ctrl ping <x> --n N` | `ctrl hc <x> --count N` |
+| `ctrl probe <x> [--tcp] [--port N]` | `ctrl hc <x> [--tcp] [--port N]` |
+| `ctrl probe sniff <s>` | `ctrl run sniff <s>` (`--on <target>` for a remote host) |
+| `ctrl probe shell` | `ctrl run toolbox` |
+| `ctrl call <s> <path>` | `ctrl run api-call <s> <path>` |
+| `ctrl smoke-test` / `st` | `ctrl run smoke` |
+| `ctrl machines` / `m` | `ctrl list machines` |
+| `ctrl tag <s> <t>` | `ctrl set tag <s> <t>` |
+| `ctrl default <n>` | `ctrl set default <n>` |
+| `ctrl gitlab-project-info` | `ctrl run gitlab-info` |
+| `ctrl gitlab-runner-deploy` | `ctrl run gitlab-runner --on <target>` (token: `GITLAB_RUNNER_TOKEN`) |
 
-ctrl call api /actuator/info           # GET request — base URL from health.port
-ctrl call api /users --method POST --body '{"name":"test"}'
-# JWT_TOKEN env var injected automatically if set
-
-ctrl probe api                         # HTTP connectivity check
-ctrl probe api --tcp                   # TCP check
-ctrl probe prod-vm --port 5432 --tcp   # check postgres port on a machine
-
-ctrl probe sniff api                   # live tcpdump via ctrl-tools container
-ctrl probe sniff api --filter 'port 5432' --save  # save to .local/captures/
-ctrl probe sniff prod api --duration 60           # run capture on remote target
-ctrl probe sniff api --host            # tcpdump on host machine instead of container
-
-ctrl probe shell                       # interactive ctrl-tools shell
-ctrl probe shell --network api         # joined to api's Docker network
-ctrl probe shell --mount ./logs:/data  # with host dir mounted
-
-ctrl doctor                            # check all deps, show install hints
-ctrl doctor --install                  # auto-install missing tools
-```
-
-The `ctrl probe sniff` and `ctrl probe shell` commands use the
-`ghcr.io/bitboyro/ctrl-tools` image — pulled on demand, never built locally.
-It bundles `tcpdump`, `tshark`, `curl`, `nc`, `nmap`, `jq`, `python3`, and `scanos`.
+Also: names in `ctrl.yaml` (services, machines, deployments, scripts, compose
+services, tags) must be plain tokens — letters, digits, `_`, `.`, `-`; extensions
+must be `.sh` files inside the project and define `ctrl_ext_cmd_<name>`
+(`ctrl_cmd_<name>` still works).
 
 ## Workflows
 
@@ -451,10 +536,9 @@ It bundles `tcpdump`, `tshark`, `curl`, `nc`, `nmap`, `jq`, `python3`, and `scan
 ```bash
 ctrl init            # generate ctrl.yaml
 ctrl check           # validate
-ctrl release api     # build + image + push
-ctrl sync            # rsync compose files to the server
-ctrl deploy api      # pull + start on the server
-ctrl hc api          # verify health
+ctrl run install-docker --on prod   # fresh VM? set it up
+ctrl deploy --release --sync api    # build, push, sync compose files, start
+ctrl hc api --wait 60               # verify health
 ```
 
 **Daily ops:**
@@ -471,7 +555,8 @@ ctrl history 5       # see audit trail
 ctrl rs              # docker compose ps
 ctrl rl api --follow # tail logs
 ctrl env api         # inspect container env
-ctrl probe sniff api --filter 'port 5432'  # watch database traffic
+ctrl run sniff api --on prod --filter 'port 5432'  # watch database traffic
+ctrl run dtop --on prod                           # container resources
 ctrl ssh             # drop into the machine
 ```
 
@@ -481,7 +566,7 @@ ctrl ssh             # drop into the machine
 ```
 error  Required command not found: yq
 ```
-Run `ctrl doctor` for install hints, or `ctrl doctor --install` to auto-install.
+Run `ctrl doctor` for the install command on your platform, or `ctrl doctor --install`.
 
 **Env var not set**
 ```
@@ -498,8 +583,11 @@ warn  ctrl version (0.3.0) differs from ctrl.version declared in ctrl.yaml (0.2.
 ```
 Update `ctrl.version` in `ctrl.yaml` to match `ctrl version`, or upgrade ctrl.
 
-**`ctrl probe sniff` fails: container can't see traffic**
-The service container may be on a bridge network that doesn't allow raw capture. Try `--host` mode, or run the probe from the remote machine: `ctrl probe sniff prod api`.
+**`ctrl run sniff` fails: container can't see traffic**
+The service container may be on a bridge network that doesn't allow raw capture. Try `--host`, or run it on the host itself: `ctrl run sniff api --on prod`.
+
+**A script refuses to run**
+`ctrl run <name> --check [--on …]` lists every unmet requirement (OS, tools with install commands, env vars, sudo) without running anything.
 
 ## Service kinds
 

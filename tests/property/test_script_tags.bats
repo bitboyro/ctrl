@@ -28,7 +28,7 @@ teardown() { teardown_test_dir; }
       yq -i ".scripts += [{\"name\":\"${sname}\",\"path\":\"scripts/${sname}.sh\",\"tags\":${tags}}]" "${TEST_TMP}/ctrl.yaml"
     done
 
-    run_ctrl scripts --tag "${target_tag}"
+    run_ctrl run --tag "${target_tag}"
     [[ "${status}" -eq 0 ]] || { echo "iter ${i}: status=${status}"; return 1; }
 
     # Every expected name should appear, no unexpected ones.

@@ -29,13 +29,32 @@ fail() { msg_error "$*"; exit 1; }
 require_cmd() {
   local cmd
   for cmd in "$@"; do
-    command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: ${cmd}
-Install hint: brew install ${cmd}  # macOS
-              apt-get install ${cmd}  # Debian/Ubuntu"
+    command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: ${cmd}$(_require_hint "${cmd}")"
   done
 }
 
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# "\nInstall: <platform command>" for a known tool, or empty.
+_require_hint() {
+  declare -f ctrl_install_hint >/dev/null 2>&1 || return 0
+  local h; h="$(ctrl_install_hint "$1" 2>/dev/null || true)"
+  [[ -n "${h}" ]] && printf '\nInstall: %s' "${h}" || true
+}
+
+# Names (services, machines, deployments, scripts, compose services, tags) must be
+# plain tokens: they end up in yq expressions, remote shell commands and filenames.
+ctrl_is_valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; }
+
+ctrl_valid_name() {
+  local value="${1:-}" what="${2:-name}"
+  ctrl_is_valid_name "${value}" || fail "Invalid ${what}: '${value}' (allowed: letters, digits, '_', '.', '-')"
+}
+
+# Password-based SSH machines need sshpass.
+_require_sshpass() {
+  has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth.$(_require_hint sshpass)"
+}
 
 # ── dry-run executor ──────────────────────────────────────────────────────────
 # Usage: run_op "description" cmd arg1 arg2 ...
@@ -85,24 +104,46 @@ _find_config() {
     fi
     dir="$(dirname "${dir}")"
   done
+  [[ "${CTRL_CONFIG_OPTIONAL:-0}" == "1" ]] && return 1
   fail "No ctrl.yaml found. Run 'ctrl init' to create one."
+}
+
+# Directory that owns the project: where ctrl.yaml lives, or $PWD without one.
+ctrl_project_dir() {
+  if [[ -n "${CTRL_CONFIG_FILE}" ]]; then dirname "${CTRL_CONFIG_FILE}"; else printf '%s\n' "${PWD}"; fi
 }
 
 _require_yq() { require_cmd yq; }
 
-# Resolve ${VAR} references in a string using current env
-_resolve_env_refs() { echo "$1" | envsubst; }
+# Resolve ${VAR} and $VAR references in a string using the current env, like
+# envsubst did in 0.3; unset variables become empty. Pure bash — no envsubst.
+_resolve_env_refs() {
+  local rest="$1" out="" ref var
+  while [[ "${rest}" =~ \$(\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*)) ]]; do
+    ref="${BASH_REMATCH[0]}"; var="${BASH_REMATCH[2]:-${BASH_REMATCH[3]}}"
+    out+="${rest%%"${ref}"*}${!var:-}"
+    rest="${rest#*"${ref}"}"
+  done
+  printf '%s\n' "${out}${rest}"
+}
 
+# With CTRL_CONFIG_OPTIONAL=1 (run, doctor) a missing ctrl.yaml is not an
+# error: CTRL_CONFIG_FILE stays empty and CTRL_YAML is an empty map.
 load_config() {
-  _find_config
   _require_yq
+  if ! _find_config; then
+    CTRL_CONFIG_FILE=""
+    CTRL_YAML='{}'
+    msg_verbose "No ctrl.yaml — running without project config"
+    return 0
+  fi
   msg_verbose "Loading config: ${CTRL_CONFIG_FILE}"
 
   local local_cfg
   local_cfg="$(dirname "${CTRL_CONFIG_FILE}")/.local/ctrl.local.yaml"
   if [[ -f "${local_cfg}" ]]; then
     msg_verbose "Merging local overrides: ${local_cfg}"
-    CTRL_YAML="$(yq '. *= load("'"${local_cfg}"'")' "${CTRL_CONFIG_FILE}")"
+    CTRL_YAML="$(CTRL_LOCALCFG="${local_cfg}" yq '. *= load(strenv(CTRL_LOCALCFG))' "${CTRL_CONFIG_FILE}")"
   else
     CTRL_YAML="$(cat "${CTRL_CONFIG_FILE}")"
   fi
@@ -160,21 +201,22 @@ resolve_machine() {
     [[ -n "${name}" && "${name}" != "null" ]] || \
       fail "No machine specified and machines.default not set in ctrl.yaml"
   fi
+  ctrl_valid_name "${name}" "machine name"
 
-  local found; found="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .name" 2>/dev/null || true)"
+  local found; found="$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]] || \
     fail "Machine '${name}' not found in ctrl.yaml machines.hosts"
 
-  CTRL_META_SSH_HOST="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .host // \"\"")")"
-  CTRL_META_SSH_USER="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .user // \"root\"")")"
-  CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .port // \"22\"")")"
-  CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .key // \"\"")")"
-  CTRL_META_SSH_PASSWORD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .password // \"\"")")"
+  CTRL_META_SSH_HOST="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .host // \"\"")")"
+  CTRL_META_SSH_USER="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .user // \"root\"")")"
+  CTRL_META_SSH_PORT="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .port // \"22\"")")"
+  CTRL_META_SSH_KEY="$(_resolve_env_refs  "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .key // \"\"")")"
+  CTRL_META_SSH_PASSWORD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .password // \"\"")")"
   # shellcheck disable=SC2034
-  CTRL_META_SSH_CWD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .cwd // \"\"")")"
+  CTRL_META_SSH_CWD="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .cwd // \"\"")")"
   export CTRL_META_SSH_PASSWORD
   local machine_remote_dir
-  machine_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${name}\") | .remote_dir // \"\"")")"
+  machine_remote_dir="$(_resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${name}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .remote_dir // \"\"")")"
   # shellcheck disable=SC2034
   [[ -n "${machine_remote_dir}" && "${machine_remote_dir}" != "null" ]] && CTRL_META_REMOTE_DIR="${machine_remote_dir}"
   # shellcheck disable=SC2034
@@ -188,8 +230,8 @@ resolve_machine() {
 
 is_machine() {
   local candidate="${1:-}"
-  [[ -z "${candidate}" ]] && return 1
-  local found; found="$(echo "${CTRL_YAML}" | yq ".machines.hosts[] | select(.name == \"${candidate}\") | .name" 2>/dev/null || true)"
+  ctrl_is_valid_name "${candidate}" || return 1
+  local found; found="$(echo "${CTRL_YAML}" | CTRL_Q="${candidate}" yq ".machines.hosts[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]]
 }
 
@@ -201,13 +243,13 @@ ctrl_service_names() {
 
 ctrl_service_field() {
   local svc="$1" field="$2"
-  _resolve_env_refs "$(echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | ${field}")"
+  _resolve_env_refs "$(echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq ".services[] | select(.name == strenv(CTRL_Q)) | ${field}")"
 }
 
 ctrl_service_exists() {
   local svc="$1"
   local found
-  found="$(echo "${CTRL_YAML}" | yq ".services[] | select(.name == \"${svc}\") | .name" 2>/dev/null || true)"
+  found="$(echo "${CTRL_YAML}" | CTRL_Q="${svc}" yq ".services[] | select(.name == strenv(CTRL_Q)) | .name" 2>/dev/null || true)"
   [[ -n "${found}" && "${found}" != "null" ]]
 }
 
@@ -241,6 +283,7 @@ ctrl_resolve_services() {
       normalized="${normalized%"${normalized##*[![:space:]]}"}"
       normalized="$(tr '[:upper:]' '[:lower:]' <<< "${normalized}")"
       [[ -z "${normalized}" ]] && continue
+      ctrl_valid_name "${normalized}" "service name"
       if [[ "${normalized}" == "all" ]]; then
         while IFS= read -r s; do out+=("${s}"); done < <(ctrl_service_names)
         echo "${out[@]}"; return
@@ -263,6 +306,7 @@ ctrl_resolve_health_services() {
       normalized="${normalized%"${normalized##*[![:space:]]}"}"
       normalized="$(tr '[:upper:]' '[:lower:]' <<< "${normalized}")"
       [[ -z "${normalized}" ]] && continue
+      ctrl_valid_name "${normalized}" "service name"
       if [[ "${normalized}" == "all" ]]; then
         while IFS= read -r s; do out+=("${s}"); done < <(ctrl_health_target_names)
         echo "${out[@]}"; return
@@ -295,7 +339,7 @@ ctrl_ssh_run() {
   local -a flags=()
   while IFS= read -r f; do flags+=("${f}"); done < <(_ssh_flags)
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    _require_sshpass
     msg_verbose "ssh ${target} (password auth)"
     if [[ "${CTRL_DRY_RUN}" == "1" ]]; then
       echo "${DIM}[DRY-RUN]${RESET} ssh ${target}: ${CTRL_SSHPASS_CMD} -p <redacted> ssh ${flags[*]} ${target} ${command}"
@@ -314,7 +358,7 @@ ctrl_scp_send() {
   local -a scp_flags=(-P "${port}" -o StrictHostKeyChecking=accept-new)
   [[ -n "${CTRL_META_SSH_KEY}" ]] && scp_flags+=(-i "${CTRL_META_SSH_KEY}")
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    _require_sshpass
     msg_verbose "scp ${src} → ${target}:${dst} (password auth)"
     if [[ "${CTRL_DRY_RUN}" == "1" ]]; then
       echo "${DIM}[DRY-RUN]${RESET} scp ${src}: ${CTRL_SSHPASS_CMD} -p <redacted> scp ${scp_flags[*]} -r ${src} ${target}:${dst}"
@@ -331,17 +375,19 @@ ctrl_scp_send() {
 journal_entry() {
   local command="$1" services="$2" exit_code="$3" duration="$4"
   mkdir -p "${CTRL_JOURNAL_DIR}"
-  printf '{"ts":"%s","version":"%s","project":"%s","command":"%s","services":"%s","host":"%s","operator":"%s","duration_s":%s,"exit_code":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    "${CTRL_VERSION}" \
-    "${CTRL_META_PROJECT}" \
-    "${command}" \
-    "${services}" \
-    "${CTRL_META_SSH_HOST:-local}" \
-    "${USER:-unknown}" \
-    "${duration}" \
-    "${exit_code}" \
-    >> "${CTRL_JOURNAL}"
+  # jq builds the line so quotes or backslashes in any field cannot break JSONL
+  jq -cn \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg version "${CTRL_VERSION}" \
+    --arg project "${CTRL_META_PROJECT}" \
+    --arg command "${command}" \
+    --arg services "${services}" \
+    --arg host "${CTRL_META_SSH_HOST:-local}" \
+    --arg operator "${USER:-unknown}" \
+    --argjson duration "${duration:-0}" \
+    --argjson exit_code "${exit_code:-0}" \
+    '{ts:$ts,version:$version,project:$project,command:$command,services:$services,host:$host,operator:$operator,duration_s:$duration,exit_code:$exit_code}' \
+    >> "${CTRL_JOURNAL}" 2>/dev/null || true
 }
 
 with_journal() {
@@ -353,3 +399,11 @@ with_journal() {
   journal_entry "${cmd}" "${svcs}" "${exit_code}" "$((end - start))"
   return "${exit_code}"
 }
+
+# ── platform ──────────────────────────────────────────────────────────────────
+# In the bundled dist platform.sh is already inlined; in the repo, load it here.
+if ! declare -f ctrl_platform_detect >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
+fi
+ctrl_platform_detect

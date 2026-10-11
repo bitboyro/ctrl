@@ -22,7 +22,7 @@ open_ssh() {
   esac
 
   if [[ -n "${CTRL_META_SSH_PASSWORD:-}" ]]; then
-    has_cmd "${CTRL_SSHPASS_CMD}" || fail "sshpass required for password-based auth. Install: brew install sshpass / apt-get install sshpass"
+    _require_sshpass
     "${CTRL_SSHPASS_CMD}" -p "${CTRL_META_SSH_PASSWORD}" ssh "${flags[@]}" "${target}" "${cmd}"
   else
     ssh "${flags[@]}" "${target}" "${cmd}"

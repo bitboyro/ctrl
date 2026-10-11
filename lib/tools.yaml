@@ -1,0 +1,146 @@
+# tools.yaml — every external tool ctrl or a bundled script may need, with
+# per-platform install sources. Used by `ctrl doctor`, run pre-flight hints and
+# `ctrl doctor --install`. Project tools in ctrl.yaml meta.tools[] use the same
+# shape and are merged on top.
+#
+#   name      command looked up on PATH
+#   kind      required | optional            (default: optional)
+#   scope     ctrl | script                  (script: only checked by run pre-flight)
+#   why       one-line reason
+#   check     command printing a version     (optional)
+#   min       minimum version                (optional, needs check)
+#   install   package names per manager — brew | apt | dnf | apk | pip
+#             url / url_darwin / url_linux   single-binary download ({os} {arch})
+#   hint      free text shown when there is no automatic install source
+tools:
+  # ── required by ctrl itself ────────────────────────────────────────────────
+  - name: yq
+    kind: required
+    why: YAML parsing (mikefarah yq v4 — not the pip package)
+    check: yq --version
+    min: "4.18"
+    install:
+      brew: yq
+      apk: yq
+      url: https://github.com/mikefarah/yq/releases/latest/download/yq_{os}_{arch}
+  - name: jq
+    kind: required
+    why: JSON processing
+    check: jq --version
+    min: "1.6"
+    install:
+      brew: jq
+      apt: jq
+      dnf: jq
+      apk: jq
+      url_linux: https://github.com/jqlang/jq/releases/latest/download/jq-linux-{arch}
+      url_darwin: https://github.com/jqlang/jq/releases/latest/download/jq-macos-{arch}
+  - name: curl
+    kind: required
+    why: health checks, downloads
+    install: {brew: curl, apt: curl, dnf: curl, apk: curl}
+  - name: ssh
+    kind: required
+    why: remote access
+    install: {brew: openssh, apt: openssh-client, dnf: openssh-clients, apk: openssh-client}
+  - name: rsync
+    kind: required
+    why: sync and cp
+    install: {brew: rsync, apt: rsync, dnf: rsync, apk: rsync}
+  - name: docker
+    kind: required
+    why: image build/push, deploy, container tools
+    hint: "ctrl run install-docker"
+
+  # ── optional: ctrl features ────────────────────────────────────────────────
+  - name: nc
+    why: hc --tcp against machines and ports
+    install: {brew: netcat, apt: netcat-openbsd, dnf: nmap-ncat, apk: netcat-openbsd}
+  - name: sshpass
+    why: password-based SSH machines
+    install: {brew: sshpass, apt: sshpass, dnf: sshpass, apk: sshpass}
+  # ── optional: bundled scripts ──────────────────────────────────────────────
+  - name: ffmpeg
+    scope: script
+    why: rec, gif, shrink
+    install: {brew: ffmpeg, apt: ffmpeg, dnf: ffmpeg, apk: ffmpeg}
+  - name: wf-recorder
+    scope: script
+    why: rec on Wayland
+    install: {apt: wf-recorder, dnf: wf-recorder, apk: wf-recorder}
+  - name: tcpdump
+    scope: script
+    why: sniff --host
+    install: {brew: tcpdump, apt: tcpdump, dnf: tcpdump, apk: tcpdump}
+  - name: fzf
+    scope: script
+    why: dsh container picker
+    install: {brew: fzf, apt: fzf, dnf: fzf, apk: fzf}
+  - name: qrencode
+    scope: script
+    why: qr, share
+    install: {brew: qrencode, apt: qrencode, dnf: qrencode, apk: libqrencode-tools}
+  - name: cloudflared
+    scope: script
+    why: share --tunnel (public URL)
+    install:
+      brew: cloudflared
+      url_linux: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-{arch}
+  - name: python3
+    scope: script
+    why: share (static file server)
+    install: {brew: python, apt: python3, dnf: python3, apk: python3}
+  - name: openssl
+    scope: script
+    why: certs
+    install: {brew: openssl, apt: openssl, dnf: openssl, apk: openssl}
+  - name: gitlab-runner
+    scope: script
+    why: gitlab-runner
+    hint: "ctrl run gitlab-runner"
+  - name: tailscale
+    scope: script
+    why: install-tailscale
+    hint: "ctrl run install-tailscale"
+  - name: ufw
+    scope: script
+    why: ufw-basics
+    install: {apt: ufw, dnf: ufw, apk: ufw}
+  - name: gpg
+    scope: script
+    why: install-docker (repository key verification)
+    install: {brew: gnupg, apt: gnupg, dnf: gnupg2, apk: gnupg}
+  - name: git
+    scope: script
+    why: churn, lint --changed, loc
+    install: {brew: git, apt: git, dnf: git, apk: git}
+  - name: shellcheck
+    scope: script
+    why: lint (shell)
+    install: {brew: shellcheck, apt: shellcheck, dnf: ShellCheck, apk: shellcheck}
+  - name: shfmt
+    scope: script
+    why: lint --fix (shell formatting)
+    install:
+      brew: shfmt
+      apt: shfmt
+      apk: shfmt
+      url: https://github.com/mvdan/sh/releases/latest/download/shfmt_v3.8.0_{os}_{arch}
+  - name: hadolint
+    scope: script
+    why: lint (Dockerfile)
+    install:
+      brew: hadolint
+      url_linux: https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+  - name: yamllint
+    scope: script
+    why: lint (YAML)
+    install: {brew: yamllint, apt: yamllint, dnf: yamllint, apk: yamllint, pip: yamllint}
+  - name: actionlint
+    scope: script
+    why: lint (GitHub Actions workflows)
+    install: {brew: actionlint}
+  - name: ruff
+    scope: script
+    why: lint (Python)
+    install: {brew: ruff, pip: ruff}

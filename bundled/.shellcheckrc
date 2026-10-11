@@ -1,0 +1,3 @@
+# bundled scripts get their helpers (colours, SUDO, say/ok/die…) from _lib.sh,
+# inlined at the `# ctrl:lib` marker when ctrl materialises them
+disable=SC2154

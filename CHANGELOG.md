@@ -5,6 +5,128 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-11
+
+One command for every script. `ctrl run` now runs project scripts and a bundled
+library on this machine or on any set of hosts, with one fixed set of
+modifiers. Overlapping commands are merged, rarely used ones became bundled
+scripts, and ctrl knows which OS, architecture and package manager it is on.
+See README → "Migrating from 0.3".
+
+### Added
+- **`ctrl run` engine** (`lib/scripts.sh`):
+  - **Resolution:** a `ctrl.yaml` entry with a path first, then `scripts/<name>.sh` (auto-discovered, no entry needed), then a bundled script.
+  - **Modifiers, the same for every script:**
+    - `--on local|<target>|a,b|@tag|all` — several targets run in parallel, with host-prefixed output, a per-host summary and a combined exit code.
+    - `--check` — pre-flight only, on every host.
+    - `--show` — header and source; for a project copy, the diff against the bundled version.
+    - `--own` — copy a bundled script into `scripts/` with its helpers inlined, so it runs standalone.
+    - `-n` — for `@dry-run` scripts, prints their exact commands.
+    - `--yes` — confirms `@sudo` scripts.
+  - **Listing:** `ctrl run` with no name lists every script, grouped (`--tag`, `--json`).
+- **Script headers** (`# @description`, `@group`, `@tags`, `@requires`, `@env`, `@env-optional`, `@os`, `@remote`, `@sudo`, `@dry-run`, `@flags`, read from the first 60 lines):
+  - A `ctrl.yaml` entry overrides any of them; `scripts[].path` is now optional.
+  - One pre-flight covers OS, tools (with the install command for that host's package manager), env vars and sudo, locally and inside the remote preamble.
+  - `@env` / `@env-optional` values are forwarded to `--on` hosts over stdin, never in argv.
+- **Bundled library (30 scripts)**, embedded in `dist/ctrl`:
+  - **dev:**
+    - `lint` — detects file types and runs the right linter for each (shellcheck, hadolint, yamllint or a yq parse, actionlint, jq, ruff, eslint, gofmt/go vet, `ctrl check`); supports `--changed`, `--fix`, `--only` and `--list`.
+    - `loc` — code, comment and blank lines by language, folder or file, with `--json`.
+    - `churn` — git activity by author or file, and hotspot files (changes × size).
+  - **media:** `rec`, `gif`, `shrink`, `snap`
+  - **share:** `share`, `qr`
+  - **setup:** `install-docker` (repo key fingerprint verified), `add-swap`, `harden-ssh` (lock-out guards, `sshd -t`), `ufw-basics`, `install-tailscale`, `timezone`
+  - **docker:** `dsh`, `dtop`, `dclean`
+  - **network:** `ports`, `myip`, `certs`, `sniff`, `toolbox`, `api-call`
+  - **system:** `sysinfo`, `hogs`
+  - **ci:** `gitlab-info`, `gitlab-runner` (SHA256-verified binary)
+  - **project / meta:** `smoke`, `new-script`
+  - Every script works with no arguments, prints its commands under `-n`, and asks before changing the system.
+- **Platform awareness** (`lib/platform.sh`):
+  - Detects `CTRL_OS`, `CTRL_ARCH` and `CTRL_PKG` (brew/apt/dnf/apk); each can be overridden.
+  - Portable `ctrl_now_ms` and `ctrl_realpath` helpers.
+  - Stock macOS Bash 3.2 is supported.
+- **Tool registry** (`lib/tools.yaml`): package names per manager, single-binary URLs with `{os}`/`{arch}`, and `check`/`min` version rules. `ctrl.yaml` `meta.tools[]` uses the same shape and is merged on top.
+- **`ctrl doctor`:**
+  - Driven by the registry: shows the platform, detects versions that are too old, and prints the exact install command.
+  - Works without a `ctrl.yaml`.
+  - `ctrl doctor <machine>` checks a host: OS, docker, compose v2, rsync, curl, sudo.
+- **`ctrl hc`:** `--wait N`, `--count N [--interval S]`, `--tcp`, `--port N`; accepts machines as well as services.
+- **`ctrl deploy`:** `--release` and `--sync` flags.
+- **`ctrl list`:** `ctrl list machines`.
+- **`ctrl set`:** `ctrl set tag` and `ctrl set default`.
+- **`machines.hosts[].tags`**, used by `--on @tag`.
+- **MCP tools:**
+  - New: `run_list`, and `run {name, args, on, check, dry_run, yes}`.
+  - Every tool declares whether its output is JSON or text.
+  - The server works outside a project.
+- **Help for removed commands:** each removed command prints its replacement, both when run and in `ctrl help <cmd>`.
+- **`ctrl upgrade`:** it was documented but never implemented. It reads the latest release, prints the CHANGELOG sections since your version, then SHA256-verifies, sanity-checks and atomically replaces a single-file install.
+- **Release checksum:** the release workflow publishes `ctrl.sha256` alongside `dist/ctrl`.
+- **Tests:** 305 tests, up from 151. New suites:
+  - `test_run_engine`, `test_run_on` (fan-out through a fake ssh), `test_bundled` (the library contract plus a dry-run for each script), `test_dev_scripts` (lint with fake linters, exact loc counts, churn on a throwaway repo), `test_hostile_input`, `test_upgrade_install`.
+  - Real-SSH `run --on` tests against the CI sshd.
+  - CI lints `bundled/`, the completions and `tests/` with ShellCheck. The known false positives are recorded in `bundled/.shellcheckrc` and `tests/.shellcheckrc`, so CI, editors and `ctrl run lint` agree; the repo passes `ctrl run lint`.
+
+### Changed
+- `ctrl.yaml` is optional for `run`, `doctor` and `mcp`.
+- `ctrl check` now also:
+  - rejects names that aren't plain tokens (services, compose services, `depends_on`, machines, tags, deployments, scripts);
+  - lints the headers in `scripts/*.sh`;
+  - accepts `smoke_tests` that name discovered or bundled scripts.
+- Journal entries are built with `jq`. `run --on` writes one entry per host.
+- `${VAR}` / `$VAR` expansion in `ctrl.yaml` is pure Bash. It replaces `envsubst`, which stock macOS doesn't ship, and expands the same two forms.
+- Extensions define `ctrl_ext_cmd_<name>`; `ctrl_cmd_<name>` still works.
+- Shell completions have been rewritten for the new command set.
+- `install.sh`:
+  - installs the SHA256-verified release binary (latest, or a given `vX.Y.Z`);
+  - `--main` installs the source tree from the repository archive, with no file list to go stale;
+  - it previously failed, because it tried to download the `agents/` files that 0.3.0 removed.
+
+### Removed
+- **Commands folded into others:**
+  - `cpr`/`copy-run` → `run --on`
+  - `scripts`/`sc` → `run`
+  - `script init` → `run new-script`
+  - `redeploy` → `deploy --release`; `sync-deploy` → `deploy --sync`
+  - `wait-ready` / `ping` / `probe <x>` → `hc`
+  - `machines` → `list machines`
+  - `tag` / `default` → `set`
+- **Commands that became bundled scripts:**
+  - `probe sniff` → `run sniff`; `probe shell` → `run toolbox`
+  - `call` → `run api-call`; `smoke-test` → `run smoke`
+  - `gitlab-project-info` → `run gitlab-info`; `gitlab-runner-deploy` → `run gitlab-runner`
+- `lib/probe.sh`, `lib/gitlab.sh`, `lib/templates.sh`.
+
+### Security
+- Values from the CLI, `ctrl.yaml` and MCP parameters reach yq only through `strenv()`. They are never spliced into expressions, including the `.local/ctrl.local.yaml` merge path.
+- Names must be plain tokens (`[A-Za-z0-9][A-Za-z0-9_.-]*`). They are validated before they reach yq, remote shells or `ctrl.yaml` writes.
+- **MCP:**
+  - Parameters are validated up front.
+  - Tool work runs in subshells, and malformed output turns into an error, so a failing tool no longer kills the server.
+- Remote arguments, `@env` values, health URLs and SSH key paths are quoted (`printf %q`); script args and env travel on stdin.
+- **Secrets are kept out of process listings (`ps`):**
+  - the GitLab token and `JWT_TOKEN` go to curl through stdin;
+  - the runner token goes through the environment;
+  - the Tailscale key goes through a 0600 file;
+  - `DOCKERHUB_PASSWORD` is unset after login.
+- No `eval` anywhere. `doctor --install` runs argv arrays built from package names, and downloads must be `https`. The old `curl | sudo bash` runner install is gone.
+- Extensions load only if they are `.sh` files inside the project tree.
+- `sniff --duration` must be an integer, and filters are passed as a single quoted tcpdump expression.
+- Build directories and `build.script` are passed to `bash -c` as positional parameters.
+- `ctrl init` validates everything it writes into YAML.
+
+### Fixed
+- `ctrl doctor --install` no longer installs the pip `yq` (a different tool that broke ctrl) or builds `pip install pip install …`.
+- **macOS:**
+  - latency timing no longer uses GNU `date +%s%3N`;
+  - no `readlink -f` at startup;
+  - no dependency on `envsubst`.
+- `hc` no longer exits silently when there is no default deployment, and latency summaries are no longer computed with `bc`.
+- MCP `build_service`/`release_service` report failures; `diff` uses `jq --arg`.
+- The `run` listing keeps descriptions and empty columns intact.
+- Five tests in the suite asserted nothing under Bash 3.2 (a failing `[[ ]]` in the middle of a test is ignored). Their assertions are now explicit.
+
 ## [0.3.0] - 2026-06-20
 
 ### Added

@@ -1,0 +1,2 @@
+# tests set globals (CTRL_YAML, CTRL_DRY_RUN, …) that the sourced lib functions read
+disable=SC2034

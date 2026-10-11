@@ -6,7 +6,7 @@ Bats-core based, organized by speed and runtime requirements.
 |------|------|------|-------|
 | Unit | `tests/unit/` | Pure functions, YAML parsing, config loading | bats, yq, jq |
 | Property | `tests/property/` | Randomized inputs over the same surface | bats, yq, jq |
-| Smoke | `tests/smoke/` | Built `dist/ctrl` as a user would install it | bats, yq, jq |
+| Smoke | `tests/smoke/` | Built `dist/ctrl` as a user would install it; `upgrade` / `install.sh` against a fake GitHub | bats, yq, jq |
 | Integration | `tests/integration/` | Real SSH/MCP/journal round-trips | bats, yq, jq, sshpass, reachable sshd |
 
 ## Prerequisites

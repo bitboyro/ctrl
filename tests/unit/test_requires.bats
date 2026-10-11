@@ -12,7 +12,7 @@ _write_noop_script() {
 
 setup() {
   setup_test_dir
-  source_libs core.sh ext.sh
+  source_libs core.sh ext.sh scripts.sh
   write_fixture_yaml
   _write_noop_script
 }
@@ -89,7 +89,7 @@ teardown() { teardown_test_dir; }
     "${TEST_TMP}/ctrl.yaml"
   run_ctrl run run
   assert_failure
-  [[ ! -f "${TEST_TMP}/ran" ]]
+  [[ ! -f "${TEST_TMP}/ran" ]] || return 1
 }
 
 @test "ctrl run does not execute script when required env var is missing" {
@@ -100,5 +100,5 @@ teardown() { teardown_test_dir; }
   unset MY_CTRL_UNSET_VAR
   run_ctrl run run
   assert_failure
-  [[ ! -f "${TEST_TMP}/ran" ]]
+  [[ ! -f "${TEST_TMP}/ran" ]] || return 1
 }

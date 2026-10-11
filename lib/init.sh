@@ -39,6 +39,14 @@ ctrl_init() {
   read -r compose_path
   [[ -n "${compose_path}" ]] || compose_path="/opt/${project_name}/docker-compose.yml"
 
+  # Everything below is written raw into YAML: accept plain values only
+  ctrl_valid_name "${project_name}" "project name"
+  ctrl_valid_name "${machine_name}" "machine name"
+  ctrl_valid_name "${ssh_user}" "SSH user"
+  [[ "${ssh_host_var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "Invalid env var name: '${ssh_host_var}'"
+  [[ -z "${registry}" || "${registry}" =~ ^[A-Za-z0-9][A-Za-z0-9._/:-]*$ ]] || fail "Invalid registry: '${registry}'"
+  [[ "${compose_path}" =~ ^/[A-Za-z0-9._/-]+$ ]] || fail "Compose path must be an absolute path of plain characters: '${compose_path}'"
+
   cat > "${config_file}" << YAML
 ctrl:
   version: "${CTRL_VERSION}"
@@ -139,4 +147,80 @@ _ctrl_add_to_path() {
   printf '\n# ctrl\n%s\n' "${export_line}" >> "${shell_rc}"
   msg_ok "Added ${bin_dir} to PATH in ${shell_rc}"
   msg "Restart your shell or run: source ${shell_rc}"
+}
+
+# ── upgrade ───────────────────────────────────────────────────────────────────
+# Latest release from GitHub; shows the CHANGELOG between the running version
+# and it; replaces a single-file install after SHA256 verification and a
+# `version` sanity run. Source installs are pointed at install.sh instead.
+# CTRL_REPO overrides the repository (and makes this testable).
+ctrl_upgrade() {
+  require_cmd curl
+  local repo="${CTRL_REPO:-https://github.com/bitboyro/ctrl}"
+  local api="${repo/https:\/\/github.com\//https://api.github.com/repos/}"
+  local latest
+  latest="$(curl -fsSL "${api}/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"v\{0,1\}\([0-9][0-9.]*\)".*/\1/p' | head -1)"
+  [[ -n "${latest}" ]] || fail "Could not determine the latest release from ${repo}"
+
+  if ctrl_version_ge "${CTRL_VERSION}" "${latest}"; then
+    msg_ok "ctrl v${CTRL_VERSION} is up to date (latest: v${latest})"
+    return 0
+  fi
+
+  msg "ctrl v${CTRL_VERSION} → v${latest}"
+  _ctrl_upgrade_changelog "${repo}" "${latest}"
+  [[ "${CTRL_DRY_RUN}" == "1" ]] && return 0
+
+  local self="${CTRL_BIN:-}"
+  if ! declare -f _ctrl_embedded_bundled >/dev/null 2>&1 || [[ -z "${self}" || ! -f "${self}" ]]; then
+    msg_warn "This is a source install (${CTRL_SELF_DIR:-?}) — upgrade it with:"
+    echo "  curl -fsSL ${repo/github.com/raw.githubusercontent.com}/main/install.sh | bash -s -- v${latest}"
+    return 0
+  fi
+  [[ -w "${self}" && -w "$(dirname "${self}")" ]] || fail "${self} is not writable — re-run with sudo, or reinstall with install.sh"
+
+  if [[ -t 0 ]]; then
+    local answer; printf 'Install v%s over %s? [y/N] ' "${latest}" "${self}"; read -r answer
+    [[ "${answer}" =~ ^[Yy]$ ]] || { msg "Aborted."; return 0; }
+  fi
+
+  local base="${repo}/releases/download/v${latest}"
+  local tmp; tmp="$(mktemp "$(dirname "${self}")/.ctrl-upgrade.XXXXXX")"
+  curl -fsSL "${base}/ctrl" -o "${tmp}" || { rm -f "${tmp}"; fail "Download failed: ${base}/ctrl"; }
+  local want have
+  want="$(curl -fsSL "${base}/ctrl.sha256" 2>/dev/null | awk '{print $1}')"
+  if [[ -n "${want}" ]]; then
+    have="$( { sha256sum "${tmp}" 2>/dev/null || shasum -a 256 "${tmp}"; } | awk '{print $1}')"
+    [[ "${want}" == "${have}" ]] || { rm -f "${tmp}"; fail "Checksum mismatch (want ${want}, got ${have}) — not installed"; }
+    msg_ok "SHA256 verified"
+  else
+    msg_warn "No ctrl.sha256 published for v${latest} — skipping checksum verification"
+  fi
+  chmod +x "${tmp}"
+  local got; got="$(bash "${tmp}" version 2>/dev/null || true)"
+  [[ "${got}" == "ctrl v${latest}" ]] || { rm -f "${tmp}"; fail "Downloaded binary reports '${got:-nothing}', expected ctrl v${latest}"; }
+  mv -f "${tmp}" "${self}"
+  msg_ok "Upgraded to v${latest}"
+}
+
+# Print CHANGELOG sections newer than the running version, coloured by kind.
+_ctrl_upgrade_changelog() {
+  local repo="$1" latest="$2"
+  local log; log="$(curl -fsSL "${repo/github.com/raw.githubusercontent.com}/v${latest}/CHANGELOG.md" 2>/dev/null || true)"
+  [[ -n "${log}" ]] || { msg_warn "CHANGELOG not available"; return 0; }
+  echo ""
+  printf '%s\n' "${log}" | awk -v cur="${CTRL_VERSION}" -v g="${GREEN}" -v r="${RED}" -v y="${YELLOW}" -v b="${BOLD}" -v z="${RESET}" '
+    function newer(v,   a, c, i, n) {           # v > cur ?
+      n = split(v, a, "."); split(cur, c, ".")
+      for (i = 1; i <= 3; i++) { if ((a[i]+0) > (c[i]+0)) return 1; if ((a[i]+0) < (c[i]+0)) return 0 }
+      return 0
+    }
+    /^## \[/ { v = $2; gsub(/[\[\]]/, "", v); show = (v != "Unreleased" && newer(v)); if (show) print b $0 z; next }
+    !show { next }
+    /^### (Added)/                 { c = g }
+    /^### (Removed|Security|Breaking)/ { c = r }
+    /^### (Changed|Fixed|Deprecated)/  { c = y }
+    /^### / { print c $0 z; next }
+    { print }'
+  echo ""
 }

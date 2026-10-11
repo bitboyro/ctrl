@@ -9,13 +9,14 @@ _mcp_tools_list() {
     {"name":"list_services","description":"List all services defined in ctrl.yaml with kind, image, and tag","inputSchema":{"type":"object","properties":{}}},
     {"name":"list_machines","description":"List all machines (SSH hosts) defined in ctrl.yaml","inputSchema":{"type":"object","properties":{}}},
     {"name":"get_info","description":"Get project info, or detail about a specific service or machine","inputSchema":{"type":"object","properties":{"target":{"type":"string","description":"Optional: service name or machine name"}}}},
-    {"name":"check_config","description":"Validate ctrl.yaml structure and file references","inputSchema":{"type":"object","properties":{}}},
+    {"name":"check_config","description":"Validate ctrl.yaml structure, names, file references and script headers","inputSchema":{"type":"object","properties":{}}},
     {"name":"build_service","description":"Build service code locally","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name or 'all'"}},"required":["service"]}},
     {"name":"release_service","description":"Build code, build image, and push to registry","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name or 'all'"}},"required":["service"]}},
     {"name":"deploy_service","description":"Pull and start services on a deployment target","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name or 'all'"},"deployment":{"type":"string","description":"Deployment target name (optional, uses default)"}},"required":["service"]}},
     {"name":"diff_deployment","description":"Compare declared image:tag vs running containers on a deployment target","inputSchema":{"type":"object","properties":{"deployment":{"type":"string","description":"Deployment target name (optional, uses default)"}}}},
-    {"name":"health_check","description":"Run health check for a service or all services","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service name or 'all' (optional, defaults to all)"}}}},
-    {"name":"run_script","description":"Run a named script from ctrl.yaml scripts:","inputSchema":{"type":"object","properties":{"name":{"type":"string","description":"Script name"}},"required":["name"]}},
+    {"name":"health_check","description":"Health check for a service, a machine (TCP), or all services","inputSchema":{"type":"object","properties":{"service":{"type":"string","description":"Service or machine name, or 'all' (default)"}}}},
+    {"name":"run_list","description":"List every runnable script: project scripts and ctrl's bundled library (name, source, group, description, os, remote, sudo)","inputSchema":{"type":"object","properties":{"tag":{"type":"string","description":"Optional tag filter"}}}},
+    {"name":"run","description":"Run a script (project or bundled) locally or on hosts. Scripts marked sudo need yes=true. Use check=true for pre-flight only and dry_run=true to see the exact commands.","inputSchema":{"type":"object","properties":{"name":{"type":"string","description":"Script name (see run_list)"},"args":{"type":"array","items":{"type":"string"},"description":"Arguments passed to the script"},"on":{"type":"string","description":"local (default) | deployment or machine | a,b | @tag | all"},"check":{"type":"boolean","description":"Pre-flight only (os, tools, env, sudo)"},"dry_run":{"type":"boolean","description":"Print what would run"},"yes":{"type":"boolean","description":"Confirm scripts that use sudo"}},"required":["name"]}},
     {"name":"update_tag","description":"Update the image tag for a service in ctrl.yaml","inputSchema":{"type":"object","properties":{"service":{"type":"string"},"tag":{"type":"string"}},"required":["service","tag"]}},
     {"name":"get_history","description":"Show the last N audit journal entries","inputSchema":{"type":"object","properties":{"count":{"type":"integer","description":"Number of entries (default 20)"}}}}
   ]
@@ -29,75 +30,97 @@ _mcp_capture() {
   echo "__EXIT_CODE__${exit_code}"
 }
 
+# Run one tool. Each branch runs its work in a subshell ($(…)), so a fail()
+# deep inside ctrl ends that call, not the server. Each branch also declares
+# its output kind: json (passed through) or text (wrapped as {"text": …}).
 _mcp_run_tool() {
   local tool="$1"
   local params="$2"
 
-  local output exit_code=0
+  local output="" exit_code=0 kind=text
   # shellcheck disable=SC2034
   CTRL_JSON=1
 
+  # Reject unsafe parameter values up front: they reach yq expressions and
+  # remote shell commands.
+  local _field _val _part
+  for _field in service deployment name tag target; do
+    _val="$(echo "${params}" | jq -r ".${_field} // \"\"" 2>/dev/null || true)"
+    [[ -z "${_val}" || "${_val}" == "null" ]] && continue
+    IFS=',' read -r -a _parts <<< "${_val}"
+    for _part in "${_parts[@]}"; do
+      _part="${_part// /}"
+      ctrl_is_valid_name "${_part}" || {
+        printf '{"error":%s}' "$(printf 'invalid %s: %s' "${_field}" "${_val}" | jq -R -s .)"; return 1; }
+    done
+  done
+  _val="$(echo "${params}" | jq -r '.count // 20' 2>/dev/null || echo 20)"
+  [[ "${_val}" =~ ^[0-9]+$ ]] || { echo '{"error":"count must be a whole number"}'; return 1; }
+
+  _p() { echo "${params}" | jq -r "$1" 2>/dev/null || true; }
+
   case "${tool}" in
     list_services)
-      output="$(ctrl_list_json 2>&1)" || exit_code=$?
+      kind=json; output="$(ctrl_list_json 2>&1)" || exit_code=$?
       ;;
     list_machines)
-      output="$(ctrl_list_machines 2>&1)" || exit_code=$?
+      kind=json; output="$(ctrl_list_machines 2>&1)" || exit_code=$?
       ;;
     get_info)
-      local target; target="$(echo "${params}" | yq '.target // ""' 2>/dev/null || true)"
-      output="$(ctrl_info "${target}" 2>&1)" || exit_code=$?
+      kind=json; output="$(ctrl_info "$(_p '.target // ""')" 2>&1)" || exit_code=$?
       ;;
     check_config)
-      output="$(ctrl_check 2>&1)" || exit_code=$?
+      kind=json; output="$(ctrl_check 2>&1)" || exit_code=$?
       ;;
     build_service)
-      local svc; svc="$(echo "${params}" | yq '.service // ""' 2>/dev/null || true)"
+      local svc; svc="$(_p '.service // ""')"
       [[ -n "${svc}" ]] || { echo '{"error":"service is required"}'; return 1; }
-      local -a svcs=()
-      read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"
-      local out=""; for s in "${svcs[@]}"; do out+="$(build_code_service "${s}" 2>&1)"; done
-      output="${out}"; exit_code=$?
+      output="$( { read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"; for s in "${svcs[@]}"; do build_code_service "${s}" || exit 1; done; } 2>&1 )" || exit_code=$?
       ;;
     release_service)
-      local svc; svc="$(echo "${params}" | yq '.service // ""' 2>/dev/null || true)"
+      local svc; svc="$(_p '.service // ""')"
       [[ -n "${svc}" ]] || { echo '{"error":"service is required"}'; return 1; }
-      local -a svcs=(); read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"
-      local out=""; for s in "${svcs[@]}"; do out+="$(release_service "${s}" 2>&1)" || exit_code=$?; done
-      output="${out}"
+      output="$( { read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"; f=0; for s in "${svcs[@]}"; do release_service "${s}" || f=1; done; exit "${f}"; } 2>&1 )" || exit_code=$?
       ;;
     deploy_service)
-      local svc; svc="$(echo "${params}" | yq '.service // "all"' 2>/dev/null || true)"
-      local dep; dep="$(echo "${params}" | yq '.deployment // ""' 2>/dev/null || true)"
-      resolve_deployment "${dep}"
-      local -a svcs=(); read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"
-      output="$(deploy_services "${svcs[@]}" 2>&1)" || exit_code=$?
+      local svc dep; svc="$(_p '.service // "all"')"; dep="$(_p '.deployment // ""')"
+      output="$( { resolve_deployment "${dep}" && read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")" && deploy_services "${svcs[@]}"; } 2>&1 )" || exit_code=$?
       ;;
     diff_deployment)
-      local dep; dep="$(echo "${params}" | yq '.deployment // ""' 2>/dev/null || true)"
-      resolve_deployment "${dep}"
-      output="$(diff_deployment 2>&1)" || exit_code=$?
+      local dep; dep="$(_p '.deployment // ""')"
+      kind=json; output="$( { resolve_deployment "${dep}" && diff_deployment; } 2>&1 )" || exit_code=$?
       ;;
     health_check)
-      local svc; svc="$(echo "${params}" | yq '.service // "all"' 2>/dev/null || true)"
-      local -a svcs=(); read -r -a svcs <<< "$(ctrl_resolve_services "${svc}")"
-      local out=""; for s in "${svcs[@]}"; do out+="$(health_check_service "${s}" 2>&1)" || exit_code=$?; done
-      output="${out}"
+      local svc; svc="$(_p '.service // "all"')"
+      output="$(ctrl_hc "${svc}" 2>&1)" || exit_code=$?
       ;;
-    run_script)
-      local name; name="$(echo "${params}" | yq '.name // ""' 2>/dev/null || true)"
+    run_list)
+      local tag; tag="$(_p '.tag // ""')"
+      kind=json; output="$(ctrl_run_list "${tag}" 2>&1)" || exit_code=$?
+      ;;
+    run|run_script)
+      local name; name="$(_p '.name // ""')"
       [[ -n "${name}" ]] || { echo '{"error":"name is required"}'; return 1; }
-      output="$(run_script "${name}" 2>&1)" || exit_code=$?
+      local -a run_args=("${name}")
+      local on; on="$(_p '.on // ""')"
+      [[ -n "${on}" ]] && run_args+=(--on "${on}")
+      [[ "$(_p '.check // false')" == "true" ]]   && run_args+=(--check)
+      [[ "$(_p '.dry_run // false')" == "true" ]] && run_args+=(--dry-run)
+      [[ "$(_p '.yes // false')" == "true" ]]     && run_args+=(--yes)
+      run_args+=(--)
+      local a
+      while IFS= read -r a; do run_args+=("${a}"); done < <(echo "${params}" | jq -r '.args[]? | tostring' 2>/dev/null)
+      # shellcheck disable=SC2034  # read by ctrl_run's listing/output helpers
+      CTRL_JSON=0
+      output="$(ctrl_run "${run_args[@]}" < /dev/null 2>&1)" || exit_code=$?
       ;;
     update_tag)
-      local svc; svc="$(echo "${params}" | yq '.service // ""' 2>/dev/null || true)"
-      local tag; tag="$(echo "${params}" | yq '.tag // ""' 2>/dev/null || true)"
+      local svc tag; svc="$(_p '.service // ""')"; tag="$(_p '.tag // ""')"
       [[ -n "${svc}" && -n "${tag}" ]] || { echo '{"error":"service and tag are required"}'; return 1; }
       output="$(ctrl_set_tag "${svc}" "${tag}" 2>&1)" || exit_code=$?
       ;;
     get_history)
-      local count; count="$(echo "${params}" | yq '.count // 20' 2>/dev/null || echo "20")"
-      output="$(show_history "${count}" 2>&1)" || exit_code=$?
+      output="$(show_history "$(_p '.count // 20')" 2>&1)" || exit_code=$?
       ;;
     *)
       echo '{"error":"unknown tool"}'; return 1
@@ -105,14 +128,11 @@ _mcp_run_tool() {
   esac
 
   if [[ "${exit_code}" -ne 0 ]]; then
-    printf '{"error":%s}' "$(printf '%s' "${output}" | jq -R -s .)"
+    printf '{"error":%s,"exit_code":%d}' "$(printf '%s' "${output}" | jq -R -s .)" "${exit_code}"
+  elif [[ "${kind}" == "json" ]] && printf '%s' "${output}" | jq -e 'type == "object" or type == "array"' >/dev/null 2>&1; then
+    printf '%s\n' "${output}"
   else
-    # If output is already JSON, pass through; otherwise wrap as text
-    if echo "${output}" | jq . >/dev/null 2>&1; then
-      echo "${output}"
-    else
-      printf '{"text":%s}' "$(printf '%s' "${output}" | jq -R -s .)"
-    fi
+    printf '{"text":%s}' "$(printf '%s' "${output}" | jq -R -s .)"
   fi
 }
 
@@ -130,6 +150,8 @@ ctrl_list_json() {
 
 ctrl_mcp_serve() {
   require_cmd jq
+  # shellcheck disable=SC2034  # read by _find_config in core.sh
+  CTRL_CONFIG_OPTIONAL=1   # bundled scripts are useful outside a project too
   load_config
   load_extensions
 
@@ -154,7 +176,10 @@ ctrl_mcp_serve() {
       tools/call)
         local tool_name; tool_name="$(echo "${params}" | jq -r '.name // ""')"
         local tool_args; tool_args="$(echo "${params}" | jq -c '.arguments // {}')"
-        local result; result="$(_mcp_run_tool "${tool_name}" "${tool_args}" 2>/dev/null || echo '{"error":"tool execution failed"}')"
+        # A tool prints exactly one JSON value, even when it fails; anything
+        # else becomes a generic error so the server never dies on bad output.
+        local result; result="$(_mcp_run_tool "${tool_name}" "${tool_args}" 2>/dev/null)" || true
+        printf '%s' "${result}" | jq -e 'type == "object" or type == "array"' >/dev/null 2>&1 || result='{"error":"tool execution failed"}'
         response="$(jq -cn --argjson id "${id}" --argjson r "${result}" '{jsonrpc:"2.0",id:$id,result:{content:[{type:"text",text:($r|tostring)}]}}')"
         ;;
       notifications/*)

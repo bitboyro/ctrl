@@ -75,5 +75,5 @@ teardown() {
   # Verify the file exists on the remote.
   run env CTRL_CONFIG="${CTRL_CONFIG}" TEST_SSH_PASSWORD="${TEST_SSH_PASSWORD}" \
     "${CTRL_REPO_ROOT}/ctrl.sh" ssh testbox -- cat /tmp/ctrl-scp-test/payload/file.txt
-  [[ "${output}" == *"hello-from-ctrl-test-"* ]]
+  [[ "${output}" == *"hello-from-ctrl-test-"* ]] || return 1
 }

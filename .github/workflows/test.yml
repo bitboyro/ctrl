@@ -23,6 +23,9 @@ jobs:
           additional_files: ctrl.sh build.sh install.sh
           scandir: ./lib
           severity: warning
+      - name: ShellCheck bundled scripts, completions and tests
+        # bundled/.shellcheckrc covers the helpers inlined from bundled/_lib.sh
+        run: shellcheck -S warning bundled/*.sh completions/ctrl.bash tests/*/*.bats tests/helpers/*.bash
       - name: shfmt (advisory)
         continue-on-error: true
         run: |

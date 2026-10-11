@@ -1,14 +1,84 @@
 #!/usr/bin/env bash
-# templates.sh — embedded templates for ctrl script init
+# @name: new-script
+# @description: Create a project script from the template (scripts/<name>.sh)
+# @group: meta
+# @flags: <name>
+# @remote: no
+# @dry-run: yes
+#
+# Template: scripts/templates/ctrl-script.sh in the project overrides the
+# built-in one below (placeholder __NAME__). The script is registered in
+# ctrl.yaml scripts[] when a ctrl.yaml exists; otherwise it is picked up from
+# scripts/ automatically.
+set -euo pipefail
+# ctrl:lib
 
-# Script template — substituted by ctrl_script_init before writing
-# Placeholders: __NAME__
-read -r -d '' CTRL_SCRIPT_TEMPLATE << 'TEMPLATE_EOF' || true
+_new_script_main() {
+common_flags "$@"
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+name="${1:-}"
+[[ -n "${name}" ]] || die "Usage: ctrl run new-script <name>"
+[[ "${name}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "Invalid script name: '${name}' (allowed: letters, digits, '_', '.', '-')"
+
+project="${CTRL_PROJECT_DIR:-${PWD}}"
+config="${CTRL_CONFIG_FILE:-}"
+scripts_dir="${project}/scripts"
+script_file="${scripts_dir}/${name}.sh"
+
+[[ ! -f "${script_file}" ]] || die "Script already exists: ${script_file}"
+if [[ -n "${config}" ]] && has yq; then
+  existing="$(CTRL_Q="${name}" yq '.scripts[] | select(.name == strenv(CTRL_Q)) | .name' "${config}" 2>/dev/null || true)"
+  [[ -z "${existing}" || "${existing}" == "null" ]] || die "Script '${name}' already registered in ctrl.yaml"
+fi
+
+template="$(_builtin_template)"
+override="${scripts_dir}/templates/ctrl-script.sh"
+if [[ -f "${override}" ]]; then
+  if [[ -r "${override}" && -s "${override}" ]]; then
+    template="$(cat "${override}")"
+  else
+    warn "Template override unreadable or empty, using built-in: ${override}"
+  fi
+fi
+
+if [[ "${CTRL_DRY_RUN}" == "1" ]]; then
+  printf 'write %q\n' "${script_file}"
+  [[ -n "${config}" ]] && printf 'register %q in %q\n' "${name}" "${config}"
+  return 0
+fi
+
+mkdir -p "${scripts_dir}"
+printf '%s\n' "${template//__NAME__/${name}}" > "${script_file}"
+chmod +x "${script_file}"
+
+if [[ -n "${config}" ]] && has yq; then
+  CTRL_Q="${name}" yq -i '.scripts += [{"name": strenv(CTRL_Q), "path": "scripts/" + strenv(CTRL_Q) + ".sh", "description": ""}]' "${config}"
+fi
+ok "Created scripts/${name}.sh — edit it, then: ctrl run ${name}"
+}
+
+
+
+
+# ── built-in template (kept below line 60: ctrl reads headers from the first 60 lines)
+_builtin_template() {
+cat <<'CTRL_TEMPLATE_EOF'
 #!/usr/bin/env bash
 # @name: __NAME__
+# @description: TODO — one line shown by `ctrl run`
+# @group: project
+# @requires:
+# @env:
+# @os:
+# @remote: yes
+# @sudo: no
+#
+# Header keys are read by ctrl: @requires / @env / @os are checked before the
+# script runs (locally, and on every --on host); @sudo: yes asks for
+# confirmation. A ctrl.yaml scripts[] entry with the same name overrides them.
 set -euo pipefail
 
-# Available env vars (injected by ctrl run):
+# Available env vars (injected by ctrl run; CTRL_REMOTE=1 when run via --on):
 #   CTRL_PROJECT      — project name from ctrl.yaml meta.project
 #   CTRL_SSH_HOST     — active deployment SSH host
 #   CTRL_REGISTRY     — image registry prefix
@@ -58,14 +128,9 @@ fi
 
 # ── Dependency Checks ─────────────────────────────────────────────────────────
 _check_deps() {
-  # Declare tool/env requirements in ctrl.yaml under scripts[].requires — ctrl
-  # enforces them before this script runs (locally for ctrl run, remotely for ctrl cpr):
-  #
-  #   scripts:
-  #     - name: __NAME__
-  #       requires:
-  #         tools: [docker, jq]
-  #         env: [MY_SECRET]
+  # Declare tool/env requirements in the header (# @requires: docker jq,
+  # # @env: MY_SECRET) — ctrl enforces them before this script runs, locally
+  # for `ctrl run` and remotely for `ctrl run __NAME__ --on <target>`.
   #
   # For runtime-only checks not covered by requires:, call require_cmd here:
   # require_cmd docker
@@ -116,43 +181,7 @@ _main() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   _main "$@"
 fi
-TEMPLATE_EOF
-
-ctrl_script_init() {
-  local name="$1"
-  [[ -n "${name}" ]] || fail "Usage: ctrl script init <name>"
-
-  local base; base="$(dirname "${CTRL_CONFIG_FILE}")"
-  local scripts_dir="${base}/scripts"
-  local script_file="${scripts_dir}/${name}.sh"
-
-  [[ -f "${script_file}" ]] && fail "Script already exists: ${script_file}"
-
-  # Check not already registered
-  local existing; existing="$(echo "${CTRL_YAML}" | yq ".scripts[] | select(.name == \"${name}\") | .name" 2>/dev/null || true)"
-  [[ -z "${existing}" || "${existing}" == "null" ]] || fail "Script '${name}' already registered in ctrl.yaml"
-
-  mkdir -p "${scripts_dir}"
-
-  # Template resolution: project override > built-in
-  local template="${CTRL_SCRIPT_TEMPLATE}"
-  local override="${base}/scripts/templates/ctrl-script.sh"
-  if [[ -f "${override}" ]]; then
-    if [[ -r "${override}" && -s "${override}" ]]; then
-      template="$(cat "${override}")"
-      msg_verbose "Using template override: ${override}"
-    else
-      msg_warn "Template override unreadable or empty, using built-in: ${override}"
-    fi
-  fi
-
-  local content; content="${template//__NAME__/${name}}"
-  printf '%s\n' "${content}" > "${script_file}"
-  chmod +x "${script_file}"
-
-  # Register in ctrl.yaml via yq in-place
-  require_cmd yq
-  yq -i ".scripts += [{\"name\": \"${name}\", \"path\": \"scripts/${name}.sh\", \"description\": \"\"}]" "${CTRL_CONFIG_FILE}"
-
-  msg_ok "Created scripts/${name}.sh — edit it, then: ctrl run ${name}"
+CTRL_TEMPLATE_EOF
 }
+
+_new_script_main "$@"

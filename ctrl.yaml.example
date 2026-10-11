@@ -4,7 +4,7 @@
 # Run 'ctrl check' after filling in your values.
 
 ctrl:
-  version: "0.0.1"
+  version: "0.4.0"
 
 meta:
   project: my-platform
@@ -22,6 +22,7 @@ machines:
       port: 22
       # cwd: /root          # optional interactive SSH start dir for `ctrl ssh prod-vm`
       # key: "${SSH_KEY}"  # optional path to private key
+      tags: [web]          # optional — `ctrl run sysinfo --on @web`
 
 services:
   - name: my-api
@@ -63,10 +64,15 @@ services:
   #   health:
   #     port: 3000
 
+# Scripts: `ctrl run` finds scripts/<name>.sh on its own and ships a bundled
+# library (ctrl run to list). Entries here add or override metadata.
 scripts:
   - name: smoke-api
     path: scripts/smoke-api.sh
     description: "Quick API smoke test after deploy"
+    # requires: {tools: [curl, jq], env: [API_TOKEN]}   # checked locally and on --on hosts
+  # - name: rec
+  #   tags: [demo]                                     # metadata override for a bundled script
 
 deployments:
   default: prod
@@ -82,4 +88,4 @@ deployments:
           - deploy/prometheus
           - deploy/.env
 
-extensions: []
+extensions: []   # .sh files inside this project; define ctrl_ext_cmd_<name>()
