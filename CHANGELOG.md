@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-23
+
+### Fixed
+- Return a non-zero exit status when service or `ctrl run --on` target resolution fails under Bash 5, including MCP service tools.
+- Isolate the sniff duration test from the local Docker installation by using a fake Docker command.
+
 ## [0.4.0] - 2026-10-11
 
 One command for every script. `ctrl run` now runs project scripts and a bundled

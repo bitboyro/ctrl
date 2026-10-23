@@ -4,7 +4,7 @@
 # Run 'ctrl check' after filling in your values.
 
 ctrl:
-  version: "0.4.0"
+  version: "0.4.1"
 
 meta:
   project: my-platform

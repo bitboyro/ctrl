@@ -73,7 +73,7 @@ ctrl completion zsh > "${fpath[1]}/_ctrl"
 
 ```yaml
 ctrl:
-  version: "0.4.0"        # pinned ctrl version; `ctrl check` warns on mismatch
+  version: "0.4.1"        # pinned ctrl version; `ctrl check` warns on mismatch
 
 meta:
   project: my-platform
@@ -463,14 +463,14 @@ keeps running. The server also works outside a project (bundled scripts).
 
 ```yaml
 ctrl:
-  version: "0.4.0"
+  version: "0.4.1"
 ```
 
 `ctrl check` warns when the running ctrl version doesn't match the declared
 one. Install a specific release by passing the tag to the installer:
 
 ```bash
-./install.sh v0.4.0     # specific version
+./install.sh v0.4.1     # specific version
 ./install.sh            # latest from main
 ```
 
