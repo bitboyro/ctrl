@@ -1,0 +1,6 @@
+version: 1
+description: Stop and remove only this example's Compose stack; never delete volumes or images
+effects: write
+execution: local
+tools: [docker]
+parameters: []

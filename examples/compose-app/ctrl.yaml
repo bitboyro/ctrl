@@ -1,0 +1,42 @@
+# Fictional application; replace placeholders for your own project.
+version: 1
+project: demo-app
+operations:
+  status:
+    uses: compose/status
+    environment:
+      COMPOSE_FILE: docker-compose.yml
+  logs:
+    uses: compose/logs
+    environment:
+      COMPOSE_FILE: docker-compose.yml
+  deploy:
+    uses: compose/deploy
+    environment:
+      COMPOSE_FILE: docker-compose.yml
+  redeploy:
+    uses: compose/redeploy
+    aliases: [rd]
+    environment:
+      COMPOSE_FILE: docker-compose.yml
+  restart:
+    uses: compose/restart
+    environment:
+      COMPOSE_FILE: docker-compose.yml
+  start: ./scripts/start.sh
+  stop: ./scripts/stop.sh
+  ssh: host/ssh
+  sync-config: ./scripts/sync-config.sh
+  smoke:
+    script: ./scripts/smoke.sh
+    environment:
+      APP_URL: http://127.0.0.1:8080
+  build: ./scripts/build.sh
+targets:
+  prod:
+    host: "${VM_HOST}"
+    user: deploy
+    cwd: /srv/demo-app
+    host_key_policy: "yes"
+    environment:
+      COMPOSE_FILE: docker-compose.yml

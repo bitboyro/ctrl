@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Open an interactive SSH session; audit covers the session, not commands typed inside it",
+  "effects": "destructive",
+  "execution": "controller",
+  "tools": [
+    "ssh",
+    "python3"
+  ],
+  "parameters": [],
+  "interactive": true,
+  "timeout": 3600
+}

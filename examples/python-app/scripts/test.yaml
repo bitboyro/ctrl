@@ -1,0 +1,6 @@
+version: 1
+description: Run local greeting tests without starting a server or creating application artifacts
+effects: read
+execution: local
+tools: [python3]
+parameters: []

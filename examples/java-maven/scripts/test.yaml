@@ -1,0 +1,7 @@
+version: 1
+description: Compile and run the Java greeting tests using the JDK; writes class files into .local/test, no downloads
+effects: write
+execution: local
+timeout: 120
+tools: [javac, java]
+parameters: []

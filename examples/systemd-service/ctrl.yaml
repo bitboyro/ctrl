@@ -1,0 +1,12 @@
+version: 1
+project: vm-service-demo
+operations:
+  status: ./scripts/status.sh
+  restart: ./scripts/restart.sh
+  ssh: host/ssh
+targets:
+  demo:
+    host: "${DEMO_HOST}"
+    user: deploy
+    cwd: /srv/demo-web
+    host_key_policy: "yes"

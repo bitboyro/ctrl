@@ -1,0 +1,12 @@
+version: 1
+description: List top-level project files as text or JSON; reads files but does not change them
+effects: read
+execution: local
+tools: [python3]
+parameters:
+  - name: format
+    flag: --format
+    type: enum
+    choices: [text, json]
+    default: text
+    description: Report output format

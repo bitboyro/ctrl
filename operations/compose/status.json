@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Show Compose services and their runtime state",
+  "effects": "read",
+  "execution": "target",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "service",
+      "type": "token",
+      "description": "Compose service; omit to address the whole stack"
+    }
+  ]
+}

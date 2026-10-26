@@ -1,0 +1,7 @@
+version: 1
+description: Build the local executable and full distribution archive in dist; never publish
+effects: write
+execution: local
+timeout: 60
+tools: [python3]
+parameters: []

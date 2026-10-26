@@ -1,0 +1,58 @@
+[
+  {
+    "path": "scripts-only",
+    "title": "Scripts only",
+    "description": "The smallest project: one contracted local operation, typed parameters, and no application framework.",
+    "tools": [
+      "Python 3"
+    ],
+    "first": "report --format json"
+  },
+  {
+    "path": "python-app",
+    "title": "Python application",
+    "description": "A standard-library HTTP app with local test, build, and start operations; no pip packages.",
+    "tools": [
+      "Python 3"
+    ],
+    "first": "test"
+  },
+  {
+    "path": "node-app",
+    "title": "Node.js application",
+    "description": "A dependency-free HTTP app with local test, build, and start operations; no npm install.",
+    "tools": [
+      "Node.js"
+    ],
+    "first": "test"
+  },
+  {
+    "path": "java-maven",
+    "title": "Java / Maven application",
+    "description": "A small Java CLI with separate JDK tests, Maven packaging, and a typed JAR invocation.",
+    "tools": [
+      "JDK 17+",
+      "Maven for packaging"
+    ],
+    "first": "test --dry-run"
+  },
+  {
+    "path": "compose-app",
+    "title": "Docker Compose application",
+    "description": "A runnable container example with local build/start/smoke/stop and replaceable remote Compose operations.",
+    "tools": [
+      "Docker with Compose v2"
+    ],
+    "first": "build api --tag review --dry-run"
+  },
+  {
+    "path": "systemd-service",
+    "title": "Service on a VM",
+    "description": "Project-specific remote status and restart scripts, an explicit target, and a sample systemd unit.",
+    "tools": [
+      "SSH locally",
+      "Bash, systemctl, and sudo on the target"
+    ],
+    "first": "status --on demo --dry-run"
+  }
+]

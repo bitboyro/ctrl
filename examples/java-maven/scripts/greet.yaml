@@ -1,0 +1,10 @@
+version: 1
+description: Run the built example JAR with one typed name parameter; no network or deployment
+effects: read
+execution: local
+tools: [java]
+parameters:
+  - name: name
+    type: token
+    default: world
+    description: Name to greet

@@ -1,0 +1,11 @@
+version: 1
+description: Start the locally built fictional api container on 127.0.0.1:8080; never pull or build images
+effects: write
+execution: local
+tools: [docker]
+parameters:
+  - name: tag
+    flag: --tag
+    type: token
+    default: review
+    description: Tag previously built with the build operation

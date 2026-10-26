@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Restart one Compose service without changing its image",
+  "effects": "write",
+  "execution": "target",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "service",
+      "type": "token",
+      "description": "Compose service; omit to address the whole stack",
+      "required": true
+    }
+  ]
+}

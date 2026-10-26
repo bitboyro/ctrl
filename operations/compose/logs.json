@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "description": "Read Compose service logs",
+  "effects": "read",
+  "execution": "target",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "service",
+      "type": "token",
+      "description": "Compose service; omit to address the whole stack"
+    },
+    {
+      "name": "lines",
+      "type": "integer",
+      "flag": "--lines",
+      "default": 200,
+      "description": "Number of recent log lines"
+    },
+    {
+      "name": "follow",
+      "type": "boolean",
+      "flag": "--follow",
+      "description": "Stream new log output"
+    }
+  ],
+  "timeout": 3600
+}

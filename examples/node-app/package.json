@@ -1,0 +1,6 @@
+{
+  "name": "ctrl-node-example",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {"test": "node test.js", "start": "node app.js"}
+}

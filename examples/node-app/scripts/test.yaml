@@ -1,0 +1,6 @@
+version: 1
+description: Run sample Node.js greeting assertions without starting a server or installing dependencies
+effects: read
+execution: local
+tools: [node]
+parameters: []

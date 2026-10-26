@@ -1,0 +1,13 @@
+version: 1
+description: Serve the sample Node.js HTTP app on 127.0.0.1 in the foreground; Ctrl-C stops it
+effects: write
+execution: local
+timeout: 3600
+tools: [node]
+parameters:
+  - name: port
+    flag: --port
+    type: enum
+    choices: ['3000', '3001']
+    default: '3000'
+    description: Approved local development port

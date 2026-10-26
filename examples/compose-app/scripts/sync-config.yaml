@@ -1,0 +1,8 @@
+version: 1
+description: Upload only docker-compose.yml to /srv/demo-app; never upload env files, credentials, or delete remote files
+effects: write
+execution: controller
+timeout: 120
+tools: [rsync, ssh, python3]
+env: []
+parameters: []

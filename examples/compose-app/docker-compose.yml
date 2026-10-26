@@ -1,0 +1,5 @@
+services:
+  api:
+    image: example/api:${APP_TAG:-review}
+    ports:
+      - "127.0.0.1:8080:8000"

@@ -1,0 +1,8 @@
+version: 1
+description: Request the fictional application's health endpoint; fail on HTTP or connection errors
+effects: read
+execution: local
+timeout: 15
+tools: [curl]
+env: []
+parameters: []

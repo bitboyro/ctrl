@@ -1,0 +1,7 @@
+version: 1
+project: ctrl
+operations:
+  test: ./scripts/test.sh
+  test-integration: ./scripts/test-integration.sh
+  build: ./scripts/package.sh
+  lint: ./scripts/lint.sh

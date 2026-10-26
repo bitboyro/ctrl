@@ -1,0 +1,6 @@
+version: 1
+project: python-demo
+operations:
+  test: ./scripts/test.sh
+  build: ./scripts/build.sh
+  start: ./scripts/start.sh

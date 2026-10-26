@@ -1,32 +1,37 @@
 name: Release
-
 on:
   push:
-    tags:
-      - 'v*'
-
+    tags: ['v*']
 jobs:
   test:
     uses: ./.github/workflows/test.yml
-
   release:
-    runs-on: ubuntu-latest
     needs: [test]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build single-file ctrl
+      - name: Check release version
+        shell: bash
+        run: |
+          version="$(cat VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "${GITHUB_REF_NAME}" == "v${version}" ]]
+      - name: Build executable and complete package
         run: bash build.sh
-
-      - name: Checksum (verified by install.sh and ctrl upgrade)
-        run: (cd dist && sha256sum ctrl > ctrl.sha256)
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/ctrl
             dist/ctrl.sha256
+            dist/ctrl-*.tar.gz
+            dist/ctrl-*.tar.gz.sha256
+          body: |
+            **Breaking upgrade:** ctrl 0.5 uses contracted operations and a new configuration format.
+            Existing 0.3/0.4 configurations and some commands are incompatible. Keep the previous
+            executable for projects that have not migrated; installation does not convert them.
+
+            Read the [migration guide](https://github.com/bitboyro/ctrl/blob/${{ github.ref_name }}/docs/migration.md)
+            and [installation instructions](https://github.com/bitboyro/ctrl/blob/${{ github.ref_name }}/docs/install.md).
           generate_release_notes: true

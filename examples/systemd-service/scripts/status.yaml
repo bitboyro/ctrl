@@ -1,0 +1,12 @@
+version: 1
+description: Read the remote demo-web service state; never install or change units
+effects: read
+execution: target
+timeout: 30
+tools: [systemctl]
+parameters:
+  - name: unit
+    type: enum
+    choices: [demo-web.service]
+    default: demo-web.service
+    description: Only the example service is permitted

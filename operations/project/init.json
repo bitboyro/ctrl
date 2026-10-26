@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "description": "Create ctrl.yaml or a project script with a typed contract",
+  "effects": "write",
+  "execution": "local",
+  "tools": [
+    "python3"
+  ],
+  "parameters": [
+    {
+      "name": "script",
+      "type": "string",
+      "flag": "--script",
+      "default": "",
+      "pattern": "(?:[a-zA-Z0-9][a-zA-Z0-9_.-]*)?",
+      "description": "Create scripts/NAME.sh and its sidecar contract"
+    }
+  ]
+}

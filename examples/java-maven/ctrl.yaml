@@ -1,0 +1,6 @@
+version: 1
+project: java-demo
+operations:
+  test: ./scripts/test.sh
+  build: ./scripts/build.sh
+  greet: ./scripts/greet.sh

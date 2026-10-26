@@ -1,0 +1,7 @@
+version: 1
+description: Run isolated runner/operation/package tests; builds dist and creates temporary test files
+effects: write
+execution: local
+timeout: 180
+tools: [python3, yq]
+parameters: []

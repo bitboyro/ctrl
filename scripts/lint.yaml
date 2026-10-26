@@ -1,0 +1,7 @@
+version: 1
+description: Check shell scripts and Python syntax without executing project operations
+effects: read
+execution: local
+timeout: 60
+tools: [shellcheck, python3]
+parameters: []

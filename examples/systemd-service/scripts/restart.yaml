@@ -1,0 +1,12 @@
+version: 1
+description: Restart only the remote demo-web service using preconfigured noninteractive sudo
+effects: write
+execution: target
+timeout: 60
+tools: [sudo, systemctl]
+parameters:
+  - name: unit
+    type: enum
+    choices: [demo-web.service]
+    default: demo-web.service
+    description: Only the example service is permitted

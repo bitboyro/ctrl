@@ -1,0 +1,7 @@
+version: 1
+description: Run real local Docker/Compose/OpenSSH/rsync tests with disposable containers, temporary keys, loopback ports, and public fixture downloads; never contact production or push images
+effects: write
+execution: local
+timeout: 600
+tools: [python3, yq, docker, ssh, ssh-keygen]
+parameters: []

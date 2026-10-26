@@ -1,91 +1,18 @@
-# ctrl.yaml — platform operations configuration
-# Reference: https://github.com/bitboyro/ctrl
-# Rename this file to ctrl.yaml. Secrets stay in .local/ctrl.local.yaml (gitignored).
-# Run 'ctrl check' after filling in your values.
-
-ctrl:
-  version: "0.4.1"
-
-meta:
-  project: my-platform
-  registry: docker.io/myorg
-  env_files:
-    - .env
-    # - .local/secret.env
-
-machines:
-  default: prod-vm
-  hosts:
-    - name: prod-vm
-      host: "${VM_HOST}"   # resolved from env at runtime — never hardcode
-      user: root
-      port: 22
-      # cwd: /root          # optional interactive SSH start dir for `ctrl ssh prod-vm`
-      # key: "${SSH_KEY}"  # optional path to private key
-      tags: [web]          # optional — `ctrl run sysinfo --on @web`
-
-services:
-  - name: my-api
-    description: "Backend API service"
-    image: docker.io/myorg/my-api
-    tag: latest
-    build:
-      tool: maven          # maven | gradle | npm | make | shell | skip
-      dir: ../my-api
-      # args: "-pl my-module -am"
-      # prerequisites:
-      #   - ../shared-lib
-    deploy:
-      compose_service: my-api
-      # depends_on:
-      #   - postgres
-    health:
-      port: 8080           # or: url: https://...
-    smoke_tests:
-      - smoke-api
-
-  - name: my-web
-    description: "Frontend (Next.js)"
-    image: docker.io/myorg/my-web
-    tag: latest
-    build:
-      tool: npm
-      dir: ../my-web
-    deploy:
-      compose_service: my-web
-
-  # External service — third-party image, no build/push
-  # - name: grafana
-  #   kind: external
-  #   image: grafana/grafana
-  #   tag: "10.2.0"
-  #   deploy:
-  #     compose_service: grafana
-  #   health:
-  #     port: 3000
-
-# Scripts: `ctrl run` finds scripts/<name>.sh on its own and ships a bundled
-# library (ctrl run to list). Entries here add or override metadata.
-scripts:
-  - name: smoke-api
-    path: scripts/smoke-api.sh
-    description: "Quick API smoke test after deploy"
-    # requires: {tools: [curl, jq], env: [API_TOKEN]}   # checked locally and on --on hosts
-  # - name: rec
-  #   tags: [demo]                                     # metadata override for a bundled script
-
-deployments:
-  default: prod
-  targets:
-    - name: prod
-      machine: prod-vm
-      compose_path: /opt/my-platform/docker-compose.yml
-      # cwd: /opt/my-platform  # optional interactive SSH start dir override for `ctrl ssh prod`
-      sync:
-        paths:
-          - deploy/docker-compose.yml
-          - deploy/traefik
-          - deploy/prometheus
-          - deploy/.env
-
-extensions: []   # .sh files inside this project; define ctrl_ext_cmd_<name>()
+version: 1
+project: my-app
+operations:
+  status: compose/status
+  deploy: compose/deploy
+  logs: compose/logs
+  redeploy:
+    uses: compose/redeploy
+    aliases: [rd]
+  ssh: host/ssh
+targets:
+  prod:
+    host: "${VM_HOST}"
+    user: deploy
+    cwd: /opt/my-app
+    host_key_policy: "yes"
+    environment:
+      COMPOSE_FILE: docker-compose.yml

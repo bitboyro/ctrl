@@ -1,85 +1,44 @@
-# ctrl bash completion
-# Source this file or add to /etc/bash_completion.d/ctrl
-# Usage: eval "$(ctrl completion bash)"
-# shellcheck disable=SC2207  # COMPREPLY=( $(compgen …) ) is the completion idiom
-
-_ctrl_json_names() { ctrl --json "$@" 2>/dev/null | command jq -r '.[].name' 2>/dev/null || true; }
-
+# Dynamic ctrl completion. Source this file after installing ctrl.
 _ctrl() {
-  local cur prev words cword
-  _init_completion 2>/dev/null || {
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    words=("${COMP_WORDS[@]}")
-    cword="${COMP_CWORD}"
-  }
-
-  local subcommands="build b image i push p release r
-    deploy d sync s diff
-    ssh remote-status rs remote-logs rl env e cp
-    hc health-check run
-    init check c list ls info set history h doctor
-    mcp completion upgrade version help"
-
-  if [[ "${cword}" -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "${subcommands}" -- "${cur}") )
-    return
-  fi
-
-  local cmd="${words[1]}" i
-  for (( i=1; i<cword; i++ )); do
-    case "${words[i]}" in
-      --dry-run|-n|--verbose|-v|--json|--follow) ;;
-      --config) (( i++ )) ;;
-      *) cmd="${words[i]}"; break ;;
+  local current="${COMP_WORDS[COMP_CWORD]}" previous="${COMP_WORDS[COMP_CWORD-1]}"
+  local candidates command="" operation="" i word
+  local -a config=()
+  for ((i=1; i<COMP_CWORD; i++)); do
+    word="${COMP_WORDS[i]}"
+    case "${word}" in
+      --config) config=(--config "${COMP_WORDS[i+1]}"); i=$((i+1)) ;;
+      --on) i=$((i+1)) ;;
+      --yes|--dry-run|--json|--help) ;;
+      *)
+        if [[ -z "${command}" ]]; then command="${word}"
+        elif [[ -z "${operation}" ]]; then operation="${word}"; fi ;;
     esac
   done
-
-  case "${cmd}" in
-    build|b|image|i|push|p|release|r)
-      COMPREPLY=( $(compgen -W "$(_ctrl_json_names list services) all" -- "${cur}") )
-      ;;
-    deploy|d)
-      COMPREPLY=( $(compgen -W "--release --sync $(_ctrl_json_names list services) all" -- "${cur}") )
-      ;;
-    hc|health-check)
-      COMPREPLY=( $(compgen -W "--wait --count --interval --tcp --port $(_ctrl_json_names list services) $(_ctrl_json_names list machines) all" -- "${cur}") )
-      ;;
-    ssh|remote-status|rs|remote-logs|rl|env|e|doctor)
-      COMPREPLY=( $(compgen -W "$(_ctrl_json_names list machines)" -- "${cur}") )
-      ;;
-    run)
-      if [[ "${prev}" == "--on" ]]; then
-        COMPREPLY=( $(compgen -W "local all $(_ctrl_json_names list machines)" -- "${cur}") )
-      elif [[ "${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "--on --check --show --own --dry-run --yes --tag" -- "${cur}") )
-      elif [[ "${cword}" -eq $(( i + 1 )) ]]; then
-        COMPREPLY=( $(compgen -W "$(_ctrl_json_names run)" -- "${cur}") )
-      fi
-      ;;
-    list|ls)
-      [[ "${cword}" -eq $(( i + 1 )) ]] && COMPREPLY=( $(compgen -W "services machines" -- "${cur}") )
-      ;;
-    set)
-      if [[ "${cword}" -eq $(( i + 1 )) ]]; then
-        COMPREPLY=( $(compgen -W "tag default" -- "${cur}") )
-      elif [[ "${words[i+1]}" == "tag" && "${cword}" -eq $(( i + 2 )) ]]; then
-        COMPREPLY=( $(compgen -W "$(_ctrl_json_names list services)" -- "${cur}") )
-      elif [[ "${words[i+1]}" == "default" ]]; then
-        COMPREPLY=( $(compgen -W "$(_ctrl_json_names list machines)" -- "${cur}") )
-      fi
-      ;;
-    info)
-      COMPREPLY=( $(compgen -W "$(_ctrl_json_names list services) $(_ctrl_json_names list machines)" -- "${cur}") )
-      ;;
-    help)
-      COMPREPLY=( $(compgen -W "build image push release deploy ssh remote-logs hc run cp diff list set doctor" -- "${cur}") )
-      ;;
-    completion)
-      COMPREPLY=( $(compgen -W "bash zsh" -- "${cur}") )
-      ;;
-  esac
+  if [[ "${previous}" == "--on" ]]; then
+    candidates="$(ctrl help "${config[@]}" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(["local"]+json.load(sys.stdin)["targets"]))' 2>/dev/null)"
+  elif [[ -z "${command}" || ( "${command}" == help || "${command}" == run || "${command}" == check ) && -z "${operation}" ]]; then
+    candidates="$(ctrl help "${config[@]}" --json 2>/dev/null | python3 -c '
+import json,sys
+x=json.load(sys.stdin)
+print(" ".join(x["core"]+[o["name"] for o in x["operations"]]+[a for o in x["operations"] for a in o["aliases"]]))' 2>/dev/null)"
+    [[ "${command}" != help ]] || candidates+=" scripts config security install migration agent examples --all"
+  else
+    case "${command}" in help|run|check) ;; *) operation="${command}" ;; esac
+    candidates="$(ctrl help "${operation}" "${config[@]}" --json 2>/dev/null | python3 -c '
+import json,sys
+x=json.load(sys.stdin); prev=sys.argv[1]; cur=sys.argv[2]
+params=x.get("parameters",[])
+if cur.startswith("-"):
+    print(" ".join([p["flag"] for p in params if "flag" in p]))
+else:
+    selected=[p for p in params if p.get("flag")==prev]
+    if not selected: selected=[p for p in params if "flag" not in p]
+    print(" ".join(v for p in selected for v in p.get("choices",[])))
+' "${previous}" "${current}" 2>/dev/null)"
+  fi
+  [[ "${command}" != help || "${current}" != -* ]] || candidates+=" --source"
+  [[ "${current}" != -* ]] || candidates+=" --help --on --dry-run --yes --config --json"
+  # shellcheck disable=SC2207
+  COMPREPLY=( $(compgen -W "${candidates}" -- "${current}") )
 }
-
 complete -F _ctrl ctrl

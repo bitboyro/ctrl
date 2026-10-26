@@ -1,0 +1,6 @@
+version: 1
+description: Package the sample Python application into .local/build/demo.pyz; never publish it
+effects: write
+execution: local
+tools: [python3]
+parameters: []

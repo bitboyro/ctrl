@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "Build a Docker image from the current project; optionally push it",
+  "effects": "write",
+  "execution": "local",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "image",
+      "type": "string",
+      "required": true,
+      "pattern": "[a-zA-Z0-9][a-zA-Z0-9_./:@-]*",
+      "description": "Image reference, including tag"
+    },
+    {
+      "name": "context",
+      "type": "string",
+      "flag": "--context",
+      "default": ".",
+      "pattern": "(?!-)[^\\x00\\n]+",
+      "description": "Docker build context relative to project"
+    },
+    {
+      "name": "dockerfile",
+      "type": "string",
+      "flag": "--dockerfile",
+      "default": "Dockerfile",
+      "pattern": "(?!-)[^\\x00\\n]+"
+    },
+    {
+      "name": "push",
+      "type": "boolean",
+      "flag": "--push"
+    }
+  ],
+  "timeout": 1800
+}

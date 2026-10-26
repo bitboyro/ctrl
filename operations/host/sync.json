@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "description": "Upload a declared local path using rsync 3+; can delete destination files",
+  "effects": "destructive",
+  "execution": "controller",
+  "tools": [
+    "rsync",
+    "ssh",
+    "python3"
+  ],
+  "parameters": [
+    {
+      "name": "source",
+      "type": "string",
+      "required": true,
+      "pattern": "(?!-)(?!.*:)[^\\x00\\n]+",
+      "description": "Local source path; trailing slash follows rsync semantics"
+    },
+    {
+      "name": "destination",
+      "type": "string",
+      "required": true,
+      "pattern": "/[^\\x00\\n]*",
+      "description": "Absolute destination directory on the target"
+    },
+    {
+      "name": "delete",
+      "type": "boolean",
+      "flag": "--delete",
+      "description": "Remove destination files missing from source"
+    }
+  ],
+  "timeout": 1800
+}

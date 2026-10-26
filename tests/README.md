@@ -1,99 +1,82 @@
-# ctrl test suite
+# Tests
 
-Bats-core based, organized by speed and runtime requirements.
+Run `python3 -m unittest discover -s tests/runner -v` with Python 3.9+, Bash,
+and mikefarah yq v4. The fast suite needs no Python packages, Bats, Docker daemon, or SSH server.
+Node.js and JDK 17+ exercise their examples when installed; CI provisions both.
+Maven commands, Compose, and systemd/SSH transport are verified with fake tools.
 
-| Tier | Path | What | Needs |
-|------|------|------|-------|
-| Unit | `tests/unit/` | Pure functions, YAML parsing, config loading | bats, yq, jq |
-| Property | `tests/property/` | Randomized inputs over the same surface | bats, yq, jq |
-| Smoke | `tests/smoke/` | Built `dist/ctrl` as a user would install it; `upgrade` / `install.sh` against a fake GitHub | bats, yq, jq |
-| Integration | `tests/integration/` | Real SSH/MCP/journal round-trips | bats, yq, jq, sshpass, reachable sshd |
+## What each layer proves
 
-## Prerequisites
+- `test_runner.py`: public CLI contracts, input rejection, environment filtering,
+  confirmations, remote quoting, output/exit behavior, audit, installer/upgrader,
+  completions, and source/package parity.
+- `test_examples.py`: every public example's metadata and first workflow, actual
+  Python/Node/JDK tests and local artifacts, plus container/VM command construction.
+- `test_resilience.py`: disk/flush failure injection, source changes during a run,
+  process-tree cleanup, rejected confirmation, interrupted/failed upgrade rollback,
+  relocation, failed remote preflight, and operation/help-name collisions.
+- `test_distribution.py`: private-file symlinks, env-file variants, invalid catalogs,
+  checksum consistency, and preservation of previous artifacts after validation failure.
+- `test_http_lifecycle.py`: real Python/Node HTTP requests over 127.0.0.1, occupied-port
+  failures, cancellation, socket cleanup, and resulting audit outcomes. These use
+  ephemeral ports and temporary projects, never an external host.
 
-```bash
-brew install bats-core yq jq sshpass    # macOS
-# Ubuntu: apt-get install bats jq sshpass + install yq v4 from GitHub releases
-```
+The HTTP tests require loopback socket permission. A restricted local sandbox may
+skip that class; run the same suite outside that sandbox to exercise it. In CI,
+blocked loopback is an error. A Docker daemon and external network are not needed.
 
-## Run
-
-```bash
-# Fast feedback (no SSH/Docker needed) — ~6s locally
-bats tests/unit/
-
-# Property tests — ~10s locally with the default 25 iterations
-bats tests/property/
-
-# More iterations for confidence
-PROPERTY_ITERATIONS=100 bats tests/property/
-
-# dist/ctrl smoke (rebuilds dist/ first)
-bats tests/smoke/
-
-# Everything except SSH (MCP + journal integration only)
-bats tests/integration/test_mcp.bats tests/integration/test_journal.bats
-```
-
-## Integration tests against a real sshd
-
-The SSH and SCP integration tests skip themselves unless an sshd is reachable
-at `${TEST_SSH_HOST:-127.0.0.1}:${TEST_SSH_PORT:-2222}` with credentials
-`${TEST_SSH_USER:-ctrltest}` / `${TEST_SSH_PASSWORD:-ctrltest}`.
-
-To run them locally, start the same container CI uses:
+## Real Docker / SSH integration (opt-in)
 
 ```bash
-docker run -d --name ctrl-test-sshd \
-  -p 2222:2222 \
-  -e PASSWORD_ACCESS=true \
-  -e USER_NAME=ctrltest \
-  -e USER_PASSWORD=ctrltest \
-  -e SUDO_ACCESS=true \
-  -e PUID=1000 -e PGID=1000 \
-  lscr.io/linuxserver/openssh-server:latest
-
-# wait a few seconds for sshd to come up, then:
-bats tests/integration/
-
-# cleanup
-docker rm -f ctrl-test-sshd
+CTRL_REAL_INTEGRATION=1 python3 -m unittest discover -s tests/integration -v
+# Equivalent project operation, with declared write effects:
+./ctrl.sh test-integration --yes
 ```
 
-## CI
+Requires a local unix-socket Docker context, a running daemon, Compose, SSH and
+ssh-keygen on the controller, and normal ctrl requirements. Public fixture image
+and package downloads require network access on the first build. A sandbox must
+permit Docker socket access and loopback connections. The separate Linux CI job
+runs this suite after the fast Linux/macOS jobs; opting in with missing prerequisites
+fails rather than silently skipping.
 
-`.github/workflows/test.yml` runs five jobs on every push and PR:
+The real suite covers:
 
-1. **lint** — ShellCheck + shfmt (advisory).
-2. **unit** — matrix across `ubuntu-latest` and `macos-latest`.
-3. **property** — Ubuntu only, `PROPERTY_ITERATIONS=50`.
-4. **smoke-dist** — builds `dist/ctrl`, runs smoke suite against it, uploads the binary as an artifact.
-5. **integration** — Ubuntu only, with `linuxserver/openssh-server` as a service container.
+- Actual Docker image build and failure status/audit.
+- Compose start, HTTP health request, status/logs, and stop/removal.
+- Actual OpenSSH key authentication, quoted script/parameter streaming, declared
+  environment, remote failure status, and missing-tool preflight.
+- Strict host-key mismatch rejection and nonexecuting plan/check behavior.
+- Actual rsync 3 transfers of binary files with quoted/spaced paths, preserving
+  destination files by default and removing them only with explicit --delete.
 
-The release workflow (`.github/workflows/release.yml`) calls this workflow as a
-reusable check before tagging — releases cannot ship without a green test run.
+A disposable SSH container provides both the server and an isolated Linux rsync 3
+client. This avoids replacing macOS's system rsync or modifying user SSH files.
+The tests pin the server key in temporary known_hosts files and use newly generated
+client keys; the user SSH agent is disabled for these connections. They never mount the host Docker socket into containers, use privileged
+containers, push images, prune Docker globally, or read production configuration.
+Only 127.0.0.1 ports are published. The Docker context must be local; remote contexts
+are refused before resources are created.
 
-## Test conventions
+Cleanup verifies removal of test-owned containers, networks, and uniquely tagged
+images. Fixture resources carry a run label, and ownership is checked before
+removal. Cleanup failures fail the suite rather than being silently ignored.
+Public base images and shared build cache may remain; no global prune is performed.
+Build/server diagnostics are retained under ignored .local/integration/RUN_ID.
+Abruptly killing the test process can interrupt cleanup; use its unique resource
+names in the diagnostics rather than removing unrelated Docker resources.
 
-- Every test file begins with a comment referencing the design-doc property it
-  validates (e.g. `# Feature: ctrl-devkit-integration, Property 7: ...`).
-- Tests use the `setup_test_dir` / `teardown_test_dir` helpers in
-  `tests/helpers/setup.bash` to get a fresh tmp dir + isolated `CTRL_CONFIG`.
-- `write_fixture_yaml` generates a minimal valid `ctrl.yaml`; per-test
-  customization is done via `FIXTURE_*` env vars or `yq -i` patches.
-- `run_ctrl` invokes the in-tree `ctrl.sh` against the current fixture.
-- Property tests randomize via helpers in `tests/helpers/random.bash`; default
-  iteration count is 25 (override with `PROPERTY_ITERATIONS=N`).
+## Isolation and limits
 
-## Adding new tests
+Tests build dist/ctrl and use isolated temporary projects and credentials. None
+contact production or mutate sibling repositories. Audit records and generated
+artifacts must remain inside fixtures or the source checkout's ignored .local/dist.
 
-For a new pure function or YAML parser change, add a unit test in
-`tests/unit/`. For a new user-facing flag or command, also add a smoke test in
-`tests/smoke/` so the bundled `dist/ctrl` is exercised. For a behavior that
-should hold across all valid inputs, add a property test.
+The fast suite uses fake tools; the opt-in suite establishes actual local Docker,
+Compose, OpenSSH, and rsync interoperability. Real systemd, remote Docker deployment
+on a VM, registry publication, and online Maven builds remain outside this suite. The journal is local and mutable,
+not tamper-evident. Process-tree cleanup covers descendants in the operation's
+process group; a deliberately detached process needs a separate job manager.
 
-## Known gaps
-
-- No `ctrl deploy` integration test (would need a full docker compose
-  round-trip against an sshd-with-docker container; defer until needed).
-- No shfmt enforcement — currently advisory until a project style is agreed.
+0.4's command/MCP/header-specific tests are replaced by the new operation contract.
+The old interface is intentionally incompatible; see docs/migration.md.

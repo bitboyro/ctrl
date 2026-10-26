@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Pull images and start Compose services; never build or sync files",
+  "effects": "write",
+  "execution": "target",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "service",
+      "type": "token",
+      "description": "Compose service; omit to address the whole stack"
+    }
+  ],
+  "timeout": 900
+}

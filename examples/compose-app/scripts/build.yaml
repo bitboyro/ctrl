@@ -1,0 +1,20 @@
+version: 1
+description: Build a fictional api image from its Dockerfile; optionally push it
+effects: write
+execution: local
+timeout: 1800
+tools: [docker]
+env: []
+parameters:
+  - name: service
+    type: enum
+    choices: [api]
+    required: true
+    description: Only api is configured here; add reviewed build implementations for other services
+  - name: tag
+    flag: --tag
+    type: token
+    required: true
+  - name: push
+    flag: --push
+    type: boolean

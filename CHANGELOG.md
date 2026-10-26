@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-26
+
+### Operations overhaul
+- Four core commands: help, run, check, upgrade; operation shortcuts use one runner.
+- Standalone Bash operations with versioned, typed contracts; explicit project bindings and aliases.
+- Local/SSH execution and controller-side SSH/rsync primitives, clean declared environment, confirmations, timeout/cancellation.
+- Durable per-project audit events with implementation hashes, redacted parameters, and fail-closed writes.
+- Small first-party Compose/Docker/host/init library; fictional examples for scripts, Python, Node.js, Java/Maven, Compose, and systemd.
+- Executable zipapp embeds same-version contracts/docs/skill; full reviewable tarball and mandatory checksums.
+- Structured offline references and dynamic completions; short agent skill without personas or MCP.
+- Deliberate 0.4 configuration/CLI break: removed MCP, extension hooks, utility collection, framework-specific build matrix, and implicit production defaults. See docs/migration.md.
+- Controller now requires Python 3.9+ and mikefarah yq v4; remote hosts need Bash and the selected operation tools, not ctrl.
+- 98 regression tests and eight real Docker/Compose/OpenSSH/rsync integration tests; CI gates releases on both suites.
+
+### Breaking migration
+- Existing 0.3/0.4 configuration is rejected; migrate explicitly before replacing a working installation.
+- Keep a versioned copy of the previous executable for projects that have not migrated. Installation never rewrites project configuration.
+
 ## [0.4.1] - 2026-10-23
 
 ### Fixed

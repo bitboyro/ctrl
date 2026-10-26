@@ -1,0 +1,6 @@
+version: 1
+description: Copy the sample Node.js application into .local/build; no compilation, installation, or publishing
+effects: write
+execution: local
+tools: [cp, mkdir]
+parameters: []

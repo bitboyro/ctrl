@@ -1,0 +1,7 @@
+version: 1
+description: Build .local/build/demo.jar with Maven; may download plugins into .local/m2; does not run tests or publish
+effects: write
+execution: local
+timeout: 900
+tools: [mvn, java]
+parameters: []

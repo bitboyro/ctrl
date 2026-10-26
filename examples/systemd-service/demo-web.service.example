@@ -1,0 +1,14 @@
+# Illustrative unit only; no ctrl operation installs it.
+[Unit]
+Description=Fictional demo web application
+After=network.target
+
+[Service]
+User=demo-web
+WorkingDirectory=/srv/demo-web
+ExecStart=/usr/bin/python3 /srv/demo-web/demo.pyz --port 8080
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

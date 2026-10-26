@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "Pull images and recreate the selected Compose service",
+  "effects": "write",
+  "execution": "target",
+  "tools": [
+    "docker"
+  ],
+  "parameters": [
+    {
+      "name": "service",
+      "type": "token",
+      "description": "Compose service to recreate",
+      "required": true
+    }
+  ],
+  "timeout": 900
+}
