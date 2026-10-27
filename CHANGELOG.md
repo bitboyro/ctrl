@@ -5,11 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.5.1] - 2026-10-26
+## [0.5.1] - 2026-10-27
 
 First published operations-runner release; the 0.5.0 tag was blocked by CI and did not publish assets.
 
 ### Fixed
+- Restore explicit SSH password authentication via password_env and sshpass, including SSH and file-copy workflows.
+- Add host/ssh-key-setup: back up and preserve existing authorized keys, add a public key, verify key-only login, and retain password login and target configuration.
+- Avoid reverse DNS during loopback Python server startup; handle completed process groups during macOS cancellation without hiding live-process permission errors.
+- Expand validation to 122 regression tests and 15 real Docker/Compose/OpenSSH/SFTP/rsync integration tests.
 - Restore cp as the supplied host/copy operation: local files/directories, SFTP upload/download, and controller-mediated target relay.
 - Preserve named endpoint syntax, explicit write consent, strict host-key policy, and linked parent/child audit records for delegated copies.
 - Reject recursive directory copies into their own descendants before writing.
