@@ -57,8 +57,12 @@ project binding. The project registry is the execution allowlist.
 
 Local is always `--on local` and is the default. There is no implicit production
 target. Remote targets require a host; default user is root, port 22, cwd /tmp.
-Password authentication is not supported: use SSH keys or ssh-agent. Host key
-checking defaults to strict `yes`; `accept-new` is an explicit trust-on-first-use
+Use normal SSH keys/agent authentication, or explicitly set `password_env` to the
+name of a credential variable (never the password itself). Password transport
+requires local `sshpass`; ctrl does not install it automatically. Setting
+`password_env` explicitly selects password authentication even when `key` is also
+configured. The variable is read from the process environment or declared env files.
+Host key checking defaults to strict `yes`; `accept-new` is an explicit trust-on-first-use
 opt-in. Do not set it to disable verification.
 
 `--on staging,prod` executes sequentially, continues after individual failures,
@@ -91,3 +95,46 @@ are forwarded to scripts, plus a small system environment and documented CTRL_*
 values. Target environment overrides operation environment. Runner/system names
 and shell/Python loader variables cannot be overridden. Other parent secrets are
 not inherited. Environment values are never included in help, plans, or audit.
+
+## Password login and key setup
+
+Start with an existing password without changing the server:
+
+```yaml
+version: 1
+project: my-app
+env_files: [.local/secrets.env]  # chmod 600; keep .local/ ignored
+operations:
+  ssh: host/ssh
+  cp: host/copy
+  ssh-key-setup: host/ssh-key-setup
+targets:
+  prod:
+    host: "${VM_HOST}"
+    user: deploy
+    password_env: VM_PASSWORD
+    cwd: /opt/my-app
+    host_key_policy: "yes"
+```
+
+Create a local key pair with `ssh-keygen -t ed25519` if needed. Keep the private
+key local; unlock a passphrase-protected key with `ssh-add` before verification.
+Then run:
+
+```bash
+ctrl ssh-key-setup --on prod --key ~/.ssh/id_ed25519 --dry-run
+ctrl ssh-key-setup --on prod --key ~/.ssh/id_ed25519 --yes
+```
+
+This explicitly grants the target account access to the key holder. It backs up
+an existing authorized_keys file when adding a key, preserves existing keys, and
+checks login with the selected private key. It never changes sshd settings,
+disables password login, copies a private key, or rewrites ctrl.yaml. If the final
+verification fails, it reports that the public key was added; the existing
+password method remains available. Repeating a successful setup with the same
+public-key line does not append duplicates.
+
+After successful verification, optionally replace `password_env` with
+`key: ~/.ssh/id_ed25519` in that target. Keep password authentication configured
+if you prefer it. This works with any SSH server, including an existing Hetzner
+VM; provisioning and resetting server credentials remain outside ctrl.

@@ -73,7 +73,7 @@ class RealServicesTests(unittest.TestCase):
     def setUpClass(cls):
         if os.environ.get('CTRL_REAL_INTEGRATION') != '1':
             raise unittest.SkipTest('Opt in with CTRL_REAL_INTEGRATION=1; requires a local Docker daemon')
-        for tool in ('docker', 'ssh', 'ssh-keygen', 'yq', 'python3'):
+        for tool in ('docker', 'ssh', 'ssh-keygen', 'sshpass', 'yq', 'python3'):
             if not shutil.which(tool):
                 raise RuntimeError('Real integration prerequisite missing: ' + tool)
         global DOCKER_ENDPOINT
@@ -102,7 +102,7 @@ class RealServicesTests(unittest.TestCase):
         (build / 'Dockerfile').write_text('''FROM python:3.12-alpine
 ARG TARGETARCH
 RUN apk add --no-cache bash openssh rsync \\
- && passwd -d root \\
+ && echo 'root:ctrl-fixture-password' | chpasswd \\
  && mkdir -p /run/sshd /root/.ssh \\
  && chmod 700 /root/.ssh \\
  && ssh-keygen -A \\
@@ -110,7 +110,7 @@ RUN apk add --no-cache bash openssh rsync \\
  && chmod 755 /usr/local/bin/yq
 COPY authorized_keys /root/.ssh/authorized_keys
 RUN chmod 600 /root/.ssh/authorized_keys
-RUN printf '%s\\n' 'PermitRootLogin prohibit-password' 'PasswordAuthentication no' 'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' 'StrictModes yes' 'AllowUsers root' 'AllowTcpForwarding no' 'AllowAgentForwarding no' 'X11Forwarding no' 'UseDNS no' 'Subsystem sftp internal-sftp' > /etc/ssh/sshd_config
+RUN printf '%s\\n' 'PermitRootLogin yes' 'PasswordAuthentication yes' 'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' 'StrictModes yes' 'AllowUsers root' 'AllowTcpForwarding no' 'AllowAgentForwarding no' 'X11Forwarding no' 'UseDNS no' 'Subsystem sftp internal-sftp' > /etc/ssh/sshd_config
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 ''')
@@ -453,3 +453,73 @@ for name,item in json.load(sys.stdin).items():
         self.assertEqual(self.records()[-1]['exit_code'], result.returncode)
         self.assertEqual(self.records()[-1]['outcome'], 'failed')
         self.assertNotEqual(run('docker', 'image', 'inspect', image).returncode, 0)
+
+
+    def password_target(self):
+        self.data['targets']['sandbox']['password_env'] = 'FIXTURE_SSH_PASSWORD'
+        self.env['FIXTURE_SSH_PASSWORD'] = 'ctrl-fixture-password'
+        self.write_config()
+
+    def test_real_password_ssh_and_sftp_copy_keep_credentials_private(self):
+        self.operation('printf "%s" "${FIXTURE_SSH_PASSWORD-unset}"')
+        self.password_target()
+        self.data['operations']['cp'] = 'host/copy'
+        self.write_config()
+        result = self.ctrl('probe', '--on', 'sandbox')
+        self.assert_ok(result)
+        self.assertEqual(result.stdout, 'unset')
+        source = self.project / 'password copy.bin'
+        source.write_bytes(b'copy via password\x00\n')
+        self.assert_ok(self.ctrl('cp', str(source), 'sandbox:' + self.remote + '/password.bin', '--yes'))
+        destination = self.project / 'download.bin'
+        self.assert_ok(self.ctrl('cp', 'sandbox:' + self.remote + '/password.bin', str(destination), '--yes'))
+        self.assertEqual(destination.read_bytes(), source.read_bytes())
+        self.assertNotIn(self.env['FIXTURE_SSH_PASSWORD'], self.ssh_capture.read_text() + json.dumps(self.records()))
+
+    def test_real_password_failure_does_not_execute_remote_script(self):
+        self.operation('touch password-should-not-execute')
+        self.password_target()
+        self.env['FIXTURE_SSH_PASSWORD'] = 'wrong-fixture-password'
+        result = self.ctrl('probe', '--on', 'sandbox')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotEqual(run('docker', 'exec', self.container, 'test', '-e', self.remote + '/password-should-not-execute').returncode, 0)
+        self.assertNotIn('wrong-fixture-password', result.stdout + result.stderr + json.dumps(self.records()))
+
+    def test_real_key_setup_preserves_keys_is_idempotent_and_retains_password(self):
+        self.password_target()
+        self.data['operations']['ssh-key-setup'] = 'host/ssh-key-setup'
+        self.write_config()
+        key = self.project / 'new key'
+        checked('ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key))
+        before = checked('docker', 'exec', self.container, 'cat', '/root/.ssh/authorized_keys')
+        result = self.ctrl('ssh-key-setup', '--on', 'sandbox', '--key', str(key), '--yes')
+        self.assert_ok(result)
+        self.assertIn('Key-only login verified', result.stdout)
+        after = checked('docker', 'exec', self.container, 'cat', '/root/.ssh/authorized_keys')
+        self.assertIn(before, after)
+        self.assertEqual(after.count(key.with_suffix('.pub').read_text().strip()), 1)
+        backups = checked('docker', 'exec', self.container, 'sh', '-c', 'cat /root/.ssh/authorized_keys.ctrl-backup.*')
+        self.assertIn(before, backups)
+        self.assert_ok(self.ctrl('ssh-key-setup', '--on', 'sandbox', '--key', str(key), '--yes'))
+        self.assertEqual(after, checked('docker', 'exec', self.container, 'cat', '/root/.ssh/authorized_keys'))
+        self.assertEqual(json.loads(self.config.read_text())['targets']['sandbox']['password_env'], 'FIXTURE_SSH_PASSWORD')
+        self.operation('printf password-still-works')
+        result = self.ctrl('probe', '--on', 'sandbox')
+        self.assert_ok(result)
+        self.assertEqual(result.stdout, 'password-still-works')
+        self.assertNotIn(self.env['FIXTURE_SSH_PASSWORD'], self.ssh_capture.read_text() + json.dumps(self.records()))
+
+    def test_real_key_setup_verification_failure_reports_key_added_and_preserves_password(self):
+        self.password_target()
+        self.data['operations']['ssh-key-setup'] = 'host/ssh-key-setup'
+        self.write_config()
+        key = self.project / 'wrong pair'
+        other = self.project / 'other pair'
+        for path in (key, other):
+            checked('ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(path))
+        shutil.copy2(other.with_suffix('.pub'), key.with_suffix('.pub'))
+        result = self.ctrl('ssh-key-setup', '--on', 'sandbox', '--key', str(key), '--yes')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Key was authorized, but key-only verification failed', result.stderr)
+        self.operation('printf password-still-works')
+        self.assert_ok(self.ctrl('probe', '--on', 'sandbox'))

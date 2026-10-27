@@ -8,6 +8,7 @@ operations:
     uses: compose/redeploy
     aliases: [rd]
   cp: host/copy
+  ssh-key-setup: host/ssh-key-setup
   ssh: host/ssh
 targets:
   prod:

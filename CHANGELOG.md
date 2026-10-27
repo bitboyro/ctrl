@@ -307,3 +307,5 @@ See README → "Migrating from 0.3".
 
 Initial release — versioned, YAML-driven platform CLI with build, push, deploy, SSH, health-check,
 smoke-test, audit journal, script extensions, and Claude skill.
+
+- Restore explicit SSH password authentication and add verified key setup without disabling password login.

@@ -57,7 +57,7 @@ jobs:
       - name: Install yq and SSH client
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssh-client
+          sudo apt-get install -y openssh-client sshpass
           sudo curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
       - name: Verify local Docker and Compose

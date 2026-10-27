@@ -50,7 +50,20 @@ session start/end, target, and status; commands typed inside SSH are not capture
 
 ## Remote transport
 
-SSH key/agent auth only, BatchMode enabled, strict known_hosts checking by default.
+SSH key/agent authentication uses BatchMode. Explicit `password_env` targets use
+local sshpass with a mode-0600 credential file in a private temporary directory;
+the password is not put in argv or audit. The file is removed on completion,
+failure, timeout, or handled cancellation. SIGKILL/power loss can leave temporary
+files; the same local account can read its credentials. Host verification stays
+strict by default with either authentication method.
+
+Controller scripts receive explicitly configured password credential variables
+for local delegation (such as copy relays). A local controller dispatcher can
+receive credential variables declared by project targets. Treat controller
+scripts as trusted code. Credentials are not forwarded to remote scripts unless
+the script contract separately declares them. `ssh-key-setup` is an explicit write
+operation: it grants access, preserves existing keys with a backup, verifies the
+selected key, and never changes password-login policy or target configuration.
 Target host, user, and port are validated. Parameters and environment travel as
 quoted literals over SSH stdin, not interpolated expressions in the remote command.
 Checks send only prerequisite probes. Plans make no SSH connection. Remote targets

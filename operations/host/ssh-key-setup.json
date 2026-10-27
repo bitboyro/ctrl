@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "Authorize an existing SSH public key using current credentials, preserve existing keys with a backup, and verify key-only login; never disable password login or change target configuration",
+  "effects": "write",
+  "execution": "controller",
+  "tools": ["python3", "ssh", "ssh-keygen"],
+  "parameters": [
+    {"name": "key", "flag": "--key", "type": "string", "default": "~/.ssh/id_ed25519", "description": "Existing private-key path; the matching PATH.pub is uploaded, never the private key"}
+  ],
+  "timeout": 120
+}

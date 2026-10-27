@@ -51,6 +51,8 @@ prerequisites. No source access to ctrl internals; use CTRL_BIN and CTRL_CONFIG_
 for explicit local composition if necessary. Remote scripts are standalone.
 
 Env files are no longer shell programs. Shell substitutions/commands inside .env
-are literal strings. SSH passwords, automatic override merges, parallel/tag/all
+are literal strings. Automatic override merges, parallel/tag/all
 fan-out, framework-specific build tool detection, and implicit secrets loading
-are absent. SSH keys/agent auth and explicit targets replace those behaviors.
+are absent. Select SSH keys/agent authentication or declare `password_env` for
+password authentication with local sshpass. Bind `ssh-key-setup: host/ssh-key-setup`
+for an explicit, verified key bootstrap using existing credentials; see ctrl help config.

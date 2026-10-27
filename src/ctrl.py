@@ -167,7 +167,7 @@ class Project:
         for name, target in self.targets.items():
             require(isinstance(name, str) and NAME.fullmatch(name) and name != "local", "Target names must be plain tokens; local is reserved")
             require(isinstance(target, dict), f"Target {name} must be a mapping")
-            require(not (set(target) - {"host", "user", "port", "key", "cwd", "environment", "host_key_policy"}), f"Unknown fields for target {name}")
+            require(not (set(target) - {"host", "user", "port", "key", "password_env", "cwd", "environment", "host_key_policy"}), f"Unknown fields for target {name}")
             host = target.get("host", "")
             require(isinstance(host, str) and host and not host.startswith("-"), f"Target {name} requires host")
             require(isinstance(target.get("user", "root"), str) and re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_.-]*", target.get("user", "root")), f"Invalid SSH user for {name}")
@@ -180,6 +180,10 @@ class Project:
                 require(isinstance(key, str) and ENV_NAME.fullmatch(key) and isinstance(value, str), f"Invalid environment for target {name}")
                 require(not key.startswith(("CTRL_", "DYLD_")) and key not in BASE_ENV and key not in UNSAFE_ENV, f"Unsafe environment key for target {name}")
             require("key" not in target or isinstance(target["key"], str), f"Target {name} key must be a path string")
+            password_env = target.get("password_env")
+            require(password_env is None or (isinstance(password_env, str) and ENV_NAME.fullmatch(password_env)
+                    and password_env not in BASE_ENV and password_env not in UNSAFE_ENV
+                    and not password_env.startswith(("CTRL_", "DYLD_"))), f"Target {name} password_env must name a credential variable")
 
     def entry(self, name, allow_library=False):
         original = name
@@ -395,9 +399,36 @@ def ssh_args(target, environ):
     require(re.fullmatch(r"[a-zA-Z0-9_.:\[\]-]+", host) and not host.startswith("-"), "Invalid resolved SSH host")
     args = ["ssh", "-p", str(target.get("port", 22)), "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
             "-o", "StrictHostKeyChecking=" + target.get("host_key_policy", "yes")]
-    if target.get("key"):
+    if target.get("key") and not target.get("password_env"):
         args += ["-i", str(Path(expand(target["key"], environ)).expanduser())]
+    if target.get("password_env"):
+        args[args.index("BatchMode=yes")] = "BatchMode=no"
+        args += ["-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "PubkeyAuthentication=no",
+                 "-o", "NumberOfPasswordPrompts=1"]
     return args + [target.get("user", "root") + "@" + host]
+
+
+@contextlib.contextmanager
+def ssh_transport(target, environ):
+    args = ssh_args(target, environ)
+    variable = target.get("password_env")
+    if not variable:
+        yield args
+        return
+    password = environ.get(variable, "")
+    require(password and not any(c in password for c in "\r\n\x00"), "SSH password credential is missing or contains unsupported line breaks")
+    sshpass = shutil.which("sshpass")
+    ssh = shutil.which("ssh")
+    require(sshpass and ssh, "Password authentication requires sshpass and ssh; install sshpass or configure a key")
+    with tempfile.TemporaryDirectory(prefix="ctrl-ssh-auth-") as directory:
+        secret = Path(directory) / "password"
+        fd = os.open(secret, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(password + "\n")
+        adapter = Path(directory) / "ssh"
+        adapter.write_text("#!/usr/bin/env bash\nexec " + shlex.join([sshpass, "-f", str(secret), ssh]) + ' "$@"\n')
+        adapter.chmod(0o700)
+        yield [str(adapter)] + args[1:]
 
 
 def process(command, env, cwd, timeout, input_text=None, interactive=False):
@@ -458,7 +489,7 @@ def process(command, env, cwd, timeout, input_text=None, interactive=False):
 
 def execute(project, requested, args, options, target_name):
     audit = Audit(project, requested, target_name, "check" if options.check else "plan" if options.dry_run else "run")
-    with audit.session():
+    with audit.session(), contextlib.ExitStack() as transport_stack:
         operation = Operation(project, requested)
         parameters = operation.parse(args)
         c = operation.contract
@@ -488,9 +519,6 @@ def execute(project, requested, args, options, target_name):
                    CTRL_REMOTE="1" if remote else "0", CTRL_YES="1" if options.yes else "0",
                    CTRL_BIN=str(ARCHIVE if PACKAGED else ROOT / "ctrl.sh"),
                    CTRL_CONFIG_FILE=str(project.path or ""))
-        if c["execution"] == "controller" and target_name != "local" and not options.dry_run:
-            command = ssh_args(target, project.environ)
-            env.update(CTRL_SSH_ARGS=canonical(command), CTRL_TARGET_CWD=target.get("cwd", "/tmp"))
         plan = {"operation": operation.name, "implementation": operation.implementation,
                 "effects": c["effects"], "execution": c["execution"], "target": target_name,
                 "cwd": cwd, "parameters": operation.redacted(parameters),
@@ -502,13 +530,30 @@ def execute(project, requested, args, options, target_name):
             print(json.dumps(plan, indent=2) if options.json else
                   f"PLAN {operation.name} -> {target_name} ({operation.implementation}, {c['effects']})\n" + json.dumps(plan, indent=2))
             return
+        command = None
+        if remote or (c["execution"] == "controller" and target_name != "local"):
+            command = transport_stack.enter_context(ssh_transport(target, project.environ))
+        if c["execution"] == "controller":
+            if command:
+                key_target = dict(target)
+                key_target.pop("password_env", None)
+                key_target.pop("key", None)
+                env.update(CTRL_SSH_ARGS=canonical(command), CTRL_SSH_KEY_ARGS=canonical(ssh_args(key_target, project.environ)),
+                           CTRL_TARGET_CWD=target.get("cwd", "/tmp"))
+            # Local controllers may delegate to ctrl (for example copy relays).
+            # Forward only explicitly declared target credential variables.
+            credential_targets = project.targets.values() if target_name == "local" else [target]
+            for credential_target in credential_targets:
+                variable = credential_target.get("password_env")
+                if variable and variable in project.environ:
+                    env[variable] = project.environ[variable]
         tools = ["bash"] + c.get("tools", [])
         if remote:
             require(shutil.which("ssh"), "ssh is required")
             # Only prerequisites execute here; the operation body is not transmitted for check.
             preflight = "set -eu\ncd " + shlex.quote(cwd) + "\n"
             preflight += "\n".join("command -v " + shlex.quote(tool) + " >/dev/null || { echo 'Missing tool: " + tool + "' >&2; exit 1; }" for tool in tools) + "\n"
-            code = process(ssh_args(target, project.environ) + ["bash --noprofile --norc -s"],
+            code = process(command + ["bash --noprofile --norc -s"],
                            {k: v for k, v in env.items() if k in BASE_ENV}, str(project.base), 30, preflight)
             require(code == 0, "Remote preflight failed")
         else:
@@ -531,7 +576,7 @@ def execute(project, requested, args, options, target_name):
             script += "\n".join("export " + k + "=" + shlex.quote(v) for k, v in remote_env.items())
             script += "\ncd " + shlex.quote(cwd) + "\n" + operation.script
             remote_command = 'env -i HOME="$HOME" PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin bash --noprofile --norc -s'
-            code = process(ssh_args(target, project.environ) + [remote_command],
+            code = process(command + [remote_command],
                            {k: v for k, v in env.items() if k in BASE_ENV}, str(project.base), c.get("timeout", 300), script)
         else:
             # Snapshot the reviewed body so on-disk changes cannot race script identity in the audit.

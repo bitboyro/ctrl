@@ -306,8 +306,8 @@ with open({str(self.capture)!r},'a') as f: f.write(json.dumps({{'argv':sys.argv[
                 time.sleep(.02)
             self.assertTrue((self.base / 'ready').exists())
             child.send_signal(signal.SIGTERM)
-            child.communicate(timeout=5)
-            self.assertEqual(child.returncode, 130)
+            stdout, stderr = child.communicate(timeout=5)
+            self.assertEqual(child.returncode, 130, stdout + stderr)
             self.assertEqual(self.records()[-1]['outcome'], 'cancelled')
             self.assertFalse((self.base / 'too-late').exists())
         finally:
@@ -388,7 +388,7 @@ with open({str(self.capture)!r},'a') as f: f.write(json.dumps({{'argv':sys.argv[
             result = subprocess.run([str(executable), 'help', '--all', '--json'], cwd=self.base, env=self.env, text=True, capture_output=True)
             self.assert_ok(result)
             implementations = [r['implementation'] for r in json.loads(result.stdout)]
-            self.assertEqual(len(implementations), 10)
+            self.assertEqual(len(implementations), 11)
             for name in implementations:
                 self.assert_ok(self.run_ctrl('help', name, '--json', packaged=executable == PACKAGE))
             for topic in ('scripts', 'config', 'security', 'install', 'migration', 'agent', 'examples', 'copy'):
@@ -741,6 +741,171 @@ with open({str(self.capture)!r},'a') as f: f.write(json.dumps({{'argv':sys.argv[
                     first = relative.split('/')[1]
                     self.assertIn(first, allowed | {'catalog.json', 'README.md'}, name)
 
+
+    def password_transport(self, password='fixture password $() with spaces'):
+        self.target()
+        self.data['targets']['prod']['password_env'] = 'SERVER_PASSWORD'
+        self.data['targets']['prod']['key'] = '${UNSET_FUTURE_KEY}'
+        self.write_config()
+        self.env['SERVER_PASSWORD'] = password
+        self.auth_capture = self.base / 'auth.jsonl'
+        self.fake('sshpass', f'''import json,os,sys
+from pathlib import Path
+secret=Path(sys.argv[2])
+with open({str(self.auth_capture)!r},'a') as f:
+ f.write(json.dumps(dict(argv=sys.argv[1:],mode=secret.stat().st_mode & 0o777,path=str(secret),password=secret.read_text().rstrip('\\n')))+'\\n')
+os.execv(sys.argv[3],sys.argv[3:])
+''')
+        return password
+
+    def test_password_transport_keeps_secret_off_argv_remote_environment_and_audit(self):
+        self.operation(body='printf "%s" "${SERVER_PASSWORD-unset}"', execution='target')
+        password = self.password_transport()
+        self.fake_ssh()
+        result = self.run_ctrl('hello', '--on', 'prod')
+        self.assert_ok(result)
+        self.assertEqual(result.stdout, 'unset')
+        self.assertNotIn(password, self.capture.read_text() + json.dumps(self.records()))
+        calls = [json.loads(line) for line in self.auth_capture.read_text().splitlines()]
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertEqual(call['mode'], 0o600)
+            self.assertEqual(call['password'], password)
+            self.assertNotIn(password, json.dumps(call['argv']))
+            self.assertFalse(Path(call['path']).exists())
+        self.assertIn('BatchMode=no', json.loads(self.capture.read_text().splitlines()[0])['argv'])
+
+    def test_password_plan_needs_no_credential_and_never_invokes_transport(self):
+        self.operation(execution='target')
+        password = self.password_transport()
+        del self.env['SERVER_PASSWORD']
+        self.fake_ssh()
+        self.assert_ok(self.run_ctrl('hello', '--on', 'prod', '--dry-run'))
+        self.assertFalse(self.auth_capture.exists())
+        self.assertFalse(self.capture.exists())
+        result = self.run_ctrl('hello', '--on', 'prod')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(password, result.stderr)
+        self.assertFalse(self.capture.exists())
+
+    def test_password_env_name_is_validated_and_literal_password_field_rejected(self):
+        self.target()
+        for fields in [dict(password='secret'),dict(password_env='${SECRET}'),dict(password_env='PATH'),dict(password_env='CTRL_SECRET')]:
+            self.data['targets']['prod'] = dict(host='example.test', **fields)
+            self.write_config()
+            self.assertNotEqual(self.run_ctrl('check').returncode, 0)
+
+    def test_password_failure_removes_private_credential_file(self):
+        self.operation(execution='target')
+        password = self.password_transport()
+        self.fake('ssh', 'raise SystemExit(5)')
+        result = self.run_ctrl('hello', '--on', 'prod')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(password, result.stdout + result.stderr + json.dumps(self.records()))
+        calls = [json.loads(line) for line in self.auth_capture.read_text().splitlines()]
+        self.assertTrue(calls)
+        self.assertFalse(Path(calls[0]['path']).exists())
+
+    def test_password_copy_delegation_preserves_explicit_process_credential(self):
+        password = self.password_transport()
+        self.data['operations']['cp'] = 'host/copy'
+        self.write_config()
+        self.fake('scp', '''import json,os,subprocess,sys
+args=sys.argv[1:]
+transport=args[args.index('-S')+1]
+raise SystemExit(subprocess.run([transport,'fixture-host','true']).returncode)
+''')
+        self.fake('ssh', 'raise SystemExit(0)')
+        source = self.base / 'file';source.write_text('data')
+        result = self.run_ctrl('cp', str(source), 'prod:/tmp/file', '--yes')
+        self.assert_ok(result)
+        self.assertNotIn(password, json.dumps(self.records()))
+        calls = [json.loads(line) for line in self.auth_capture.read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['password'], password)
+        self.assertFalse(Path(calls[0]['path']).exists())
+
+    def key_setup_fixture(self):
+        self.target()
+        self.data['operations']['ssh-key-setup'] = 'host/ssh-key-setup'
+        self.write_config()
+        self.key = self.base / 'client key'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(self.key)], check=True)
+        self.remote_home = self.base / 'remote home'
+        self.remote_home.mkdir()
+        self.env['FIXTURE_REMOTE_HOME'] = str(self.remote_home)
+        self.fake('ssh', '''import os,subprocess,sys
+if sys.argv[-1]=='sh -s':
+ raise SystemExit(subprocess.run(['sh','-s'],input=sys.stdin.read(),text=True,env=dict(os.environ,HOME=os.environ['FIXTURE_REMOTE_HOME'])).returncode)
+if os.environ.get('FIXTURE_VERIFY_FAILURE'):raise SystemExit(255)
+key=sys.argv[sys.argv.index('-i')+1]
+pub=subprocess.check_output(['ssh-keygen','-y','-f',key],text=True).split()[:2]
+from pathlib import Path
+lines=(Path(os.environ['FIXTURE_REMOTE_HOME'])/'.ssh/authorized_keys').read_text().splitlines()
+raise SystemExit(0 if any(line.split()[:2]==pub for line in lines) else 255)
+''')
+        # Controller receives only explicitly declared environment.
+        self.data['operations']['ssh-key-setup'] = dict(uses='host/ssh-key-setup',environment={'FIXTURE_REMOTE_HOME':str(self.remote_home)})
+        self.write_config()
+
+    def test_key_setup_preserves_existing_keys_and_is_idempotent(self):
+        self.key_setup_fixture()
+        directory = self.remote_home / '.ssh';directory.mkdir()
+        authorized = directory / 'authorized_keys'
+        authorized.write_text('existing-key-line\n')
+        args = ('ssh-key-setup', '--on', 'prod', '--key', str(self.key), '--yes')
+        result = self.run_ctrl(*args)
+        self.assert_ok(result)
+        self.assertIn('Key-only login verified', result.stdout)
+        installed = authorized.read_text()
+        self.assertIn('existing-key-line', installed)
+        self.assertEqual(installed.count(Path(str(self.key)+'.pub').read_text().strip()),1)
+        backups = list(directory.glob('authorized_keys.ctrl-backup.*'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_text(),'existing-key-line\n')
+        self.assertEqual(authorized.stat().st_mode & 0o777,0o600)
+        self.assert_ok(self.run_ctrl(*args,packaged=True))
+        self.assertEqual(authorized.read_text(),installed)
+        self.assertEqual(len(list(directory.glob('authorized_keys.ctrl-backup.*'))),1)
+        self.assertNotIn(self.key.read_text(), result.stdout + result.stderr + json.dumps(self.records()))
+
+    def test_key_setup_plan_and_missing_consent_do_not_change_remote_keys(self):
+        self.key_setup_fixture()
+        args = ('ssh-key-setup', '--on', 'prod', '--key', str(self.key))
+        self.assert_ok(self.run_ctrl(*args,'--dry-run'))
+        self.assertNotEqual(self.run_ctrl(*args).returncode,0)
+        self.assertFalse((self.remote_home/'.ssh').exists())
+
+    def test_key_setup_verification_failure_is_explicit_and_does_not_rewrite_config(self):
+        self.key_setup_fixture()
+        self.data['operations']['ssh-key-setup']['environment']['FIXTURE_VERIFY_FAILURE']='1'
+        self.write_config()
+        original = self.config.read_bytes()
+        result = self.run_ctrl('ssh-key-setup','--on','prod','--key',str(self.key),'--yes')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Key was authorized, but key-only verification failed',result.stderr)
+        self.assertEqual(self.config.read_bytes(),original)
+        self.assertTrue((self.remote_home/'.ssh/authorized_keys').exists())
+
+    def test_key_setup_refuses_symlinked_authorization_file(self):
+        self.key_setup_fixture()
+        directory = self.remote_home/'.ssh';directory.mkdir()
+        other = self.remote_home/'untouched';other.write_text('keep')
+        (directory/'authorized_keys').symlink_to(other)
+        result = self.run_ctrl('ssh-key-setup','--on','prod','--key',str(self.key),'--yes')
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(other.read_text(),'keep')
+
+    def test_password_transport_timeout_cleans_credentials(self):
+        self.operation(body='sleep 30', execution='target', timeout=1)
+        self.password_transport()
+        self.fake_ssh()
+        result = self.run_ctrl('hello', '--on', 'prod')
+        self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in self.auth_capture.read_text().splitlines()]
+        self.assertTrue(calls)
+        self.assertTrue(all(not Path(call['path']).exists() for call in calls))
+        self.assertEqual(self.records()[-1]['exit_code'], 124)
 
 if __name__ == '__main__':
     unittest.main()
