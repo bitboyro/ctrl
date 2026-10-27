@@ -431,6 +431,29 @@ def ssh_transport(target, environ):
         yield [str(adapter)] + args[1:]
 
 
+
+def signal_process_group(child, signum):
+    try:
+        os.killpg(child.pid, signum)
+    except ProcessLookupError:
+        return
+    except PermissionError as exc:
+        # Some macOS hosts reject signals to a group containing only zombies.
+        # Accept that terminal state only after the direct child has exited and
+        # ps confirms there are no live members. Never hide a live-group denial.
+        if child.poll() is not None:
+            snapshot = subprocess.run(["ps", "-axo", "pid=,pgid=,stat="],
+                                      capture_output=True, text=True)
+            if snapshot.returncode == 0:
+                members = [row.split() for row in snapshot.stdout.splitlines() if row.strip()]
+                if all(len(row) == 3 for row in members):
+                    states = [row[2] for row in members if row[1] == str(child.pid)]
+                    if all(state.startswith("Z") for state in states):
+                        return
+                    raise PermissionError("Cannot signal operation group with live members: " + ", ".join(states)) from exc
+        raise
+
+
 def process(command, env, cwd, timeout, input_text=None, interactive=False):
     with tempfile.TemporaryFile(mode="w+") as stdin:
         if input_text is not None:
@@ -446,7 +469,7 @@ def process(command, env, cwd, timeout, input_text=None, interactive=False):
                     if interactive:
                         child.send_signal(signum)
                     else:
-                        os.killpg(child.pid, signum)
+                        signal_process_group(child, signum)
                 except ProcessLookupError:
                     pass
             raise KeyboardInterrupt
@@ -459,7 +482,7 @@ def process(command, env, cwd, timeout, input_text=None, interactive=False):
                 if interactive:
                     child.kill()
                 else:
-                    os.killpg(child.pid, signal.SIGKILL)
+                    signal_process_group(child, signal.SIGKILL)
                 child.wait()
                 return 124
             except KeyboardInterrupt:
@@ -476,7 +499,7 @@ def process(command, env, cwd, timeout, input_text=None, interactive=False):
                             if child.poll() is None:
                                 child.kill()
                         else:
-                            os.killpg(child.pid, signal.SIGKILL)
+                            signal_process_group(child, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
                     child.wait()
