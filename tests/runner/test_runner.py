@@ -388,10 +388,10 @@ with open({str(self.capture)!r},'a') as f: f.write(json.dumps({{'argv':sys.argv[
             result = subprocess.run([str(executable), 'help', '--all', '--json'], cwd=self.base, env=self.env, text=True, capture_output=True)
             self.assert_ok(result)
             implementations = [r['implementation'] for r in json.loads(result.stdout)]
-            self.assertEqual(len(implementations), 9)
+            self.assertEqual(len(implementations), 10)
             for name in implementations:
                 self.assert_ok(self.run_ctrl('help', name, '--json', packaged=executable == PACKAGE))
-            for topic in ('scripts', 'config', 'security', 'install', 'migration', 'agent', 'examples'):
+            for topic in ('scripts', 'config', 'security', 'install', 'migration', 'agent', 'examples', 'copy'):
                 self.assert_ok(self.run_ctrl('help', topic, packaged=executable == PACKAGE))
 
     def test_compose_command_arrays_and_failure_stops_deploy(self):

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Copy a file or directory locally, upload/download through SFTP, or relay between named targets; may overwrite destination files",
+  "effects": "write",
+  "execution": "controller",
+  "target_optional": true,
+  "timeout": 1800,
+  "tools": ["python3", "ssh", "scp"],
+  "parameters": [
+    {"name":"source","type":"string","required":true,"description":"Local path or target:/path; one literal path, no remote globs"},
+    {"name":"destination","type":"string","required":true,"description":"Local path or target:/path; existing files may be overwritten"},
+    {"name":"recursive","flag":"--recursive","type":"boolean","description":"Allow directory copies"},
+    {"name":"download","flag":"--download","type":"boolean","description":"With --on TARGET, read source from that target instead of uploading"},
+    {"name":"preserve","flag":"--preserve","type":"boolean","default":true,"description":"Preserve source times/mode where permitted; --preserve=false disables it"}
+  ]
+}

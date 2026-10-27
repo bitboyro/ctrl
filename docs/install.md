@@ -1,6 +1,6 @@
 # Installation and updates
 
-ctrl 0.5.0 is a breaking upgrade. Existing 0.3/0.4 configuration is not compatible.
+ctrl 0.5.1 is a breaking upgrade. Existing 0.3/0.4 configuration is not compatible.
 Keep the previous executable for unmigrated projects; see ctrl help migration.
 The installer does not convert configuration or rewrite scripts.
 
@@ -32,7 +32,7 @@ To keep an older installation working while reviewing the migration, install to
 a separate versioned directory instead of replacing the command on PATH:
 
 ```bash
-CTRL_BIN_DIR="$HOME/.local/share/ctrl/0.5.0/bin" ./install.sh v0.5.0
+CTRL_BIN_DIR="$HOME/.local/share/ctrl/0.5.1/bin" ./install.sh v0.5.1
 ```
 
 Invoke that directory's ctrl explicitly until the relevant project has migrated.
@@ -54,7 +54,7 @@ local artifacts rather than publishing a partial package. Extract it for review 
 normal skill directory, or extract it with `ctrl help agent`; registration is
 explicit, not automatic or Claude-only.
 
-To install the published release: `./install.sh v0.5.0`. Omitting the version selects
+To install the published release: `./install.sh v0.5.1`. Omitting the version selects
 latest; checksums are mandatory. Downloading an executable directly without its
 checksum bypasses verification and is not the recommended installation path.
 

@@ -25,6 +25,7 @@ operations:
       COMPOSE_FILE: docker-compose.yml
   start: ./scripts/start.sh
   stop: ./scripts/stop.sh
+  cp: host/copy
   ssh: host/ssh
   sync-config: ./scripts/sync-config.sh
   smoke:

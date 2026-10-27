@@ -5,7 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-10-26
+## [0.5.1] - 2026-10-26
+
+First published operations-runner release; the 0.5.0 tag was blocked by CI and did not publish assets.
+
+### Fixed
+- Restore cp as the supplied host/copy operation: local files/directories, SFTP upload/download, and controller-mediated target relay.
+- Preserve named endpoint syntax, explicit write consent, strict host-key policy, and linked parent/child audit records for delegated copies.
+- Reject recursive directory copies into their own descendants before writing.
+- Coordinate HTTP test readiness with actual server startup before connecting to ephemeral ports on macOS.
+- File-copy tests include real OpenSSH/SFTP transfers; migration keeps useful atomic operations rather than removing capabilities.
+
+
+## [0.5.0] - 2026-10-26 (unpublished; CI blocked)
 
 ### Operations overhaul
 - Four core commands: help, run, check, upgrade; operation shortcuts use one runner.

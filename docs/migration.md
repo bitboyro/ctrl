@@ -20,7 +20,8 @@ a configured project operation, so library names cannot bypass the allowlist.
 | deploy | configure deploy: compose/deploy (no build or sync) |
 | redeploy / rd | configure redeploy: compose/redeploy; alias rd explicitly |
 | ssh | configure ssh: host/ssh (session-level audit) |
-| sync / cp | configure sync: host/sync (upload only in v1) |
+| cp | configure cp: host/copy (local, upload, download, target relay) |
+| sync | configure sync: host/sync (rsync mirroring/upload) |
 | image/build/push/release | docker/build, or project build/release scripts |
 | health-check / hc / diff | project operations with declared scope and output |
 | init | supplied project/init operation (ctrl init) |

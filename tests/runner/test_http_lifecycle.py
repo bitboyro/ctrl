@@ -69,18 +69,26 @@ class HttpLifecycleTests(unittest.TestCase):
             self.prepare(name, port.getsockname()[1])
         self.log = open(self.base / 'server.log', 'w+')
         self.child = subprocess.Popen(self.command(packaged), cwd=self.project, stdout=self.log, stderr=self.log)
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 20
+        announcement = 'Listening on http://127.0.0.1:' + str(self.port)
+        last_error = 'server has not announced readiness'
         while time.monotonic() < deadline:
+            output = (self.base / 'server.log').read_text()
             if self.child.poll() is not None:
-                self.log.seek(0)
-                self.fail('Server exited before readiness:\n' + self.log.read())
-            try:
-                if self.request('/health') == (200, 'ok'):
-                    return
-            except (OSError, http.client.HTTPException):
-                pass
+                self.fail('Server exited before readiness:\n' + output)
+            # Do not probe an unbound ephemeral destination: on macOS a client
+            # can acquire that same source port and self-connect before bind.
+            # Both real apps announce only after their listen() has succeeded.
+            if announcement in output:
+                try:
+                    response = self.request('/health')
+                    if response == (200, 'ok'):
+                        return
+                    last_error = repr(response)
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = repr(exc)
             time.sleep(.03)
-        self.fail('Server did not become ready')
+        self.fail('Server did not become ready: ' + last_error + '\n' + (self.base / 'server.log').read_text())
 
     def stop(self):
         if self.child and self.child.poll() is None:

@@ -231,13 +231,15 @@ class Operation:
     def validate(self):
         c = self.contract
         require(isinstance(c, dict), f"{self.name}: contract must be a mapping")
-        require(not (set(c) - {"version", "description", "effects", "execution", "tools", "env", "parameters", "timeout", "interactive"}), f"{self.name}: unknown contract fields")
+        require(not (set(c) - {"version", "description", "effects", "execution", "tools", "env", "parameters", "timeout", "interactive", "target_optional"}), f"{self.name}: unknown contract fields")
         require(type(c.get("version")) is int and c.get("version") == 1, f"{self.name}: contract requires version: 1")
         require(isinstance(c.get("description"), str) and c["description"], f"{self.name}: description is required")
         require(c.get("effects") in {"read", "write", "destructive"}, f"{self.name}: effects must be read, write, or destructive")
         require(c.get("execution") in {"local", "target", "controller"}, f"{self.name}: execution must be local, target, or controller")
         require(type(c.get("timeout", 300)) is int and c.get("timeout", 300) > 0, f"{self.name}: timeout must be a positive integer")
         require(type(c.get("interactive", False)) is bool, "interactive must be a boolean")
+        require(type(c.get("target_optional", False)) is bool, "target_optional must be a boolean")
+        require(not c.get("target_optional") or c["execution"] == "controller", "target_optional applies only to controller operations")
         require(not c.get("interactive") or c["execution"] == "controller", "Interactive operations must execute on the controller")
         require(isinstance(self.environment, dict), "environment must be a mapping")
         for key, value in self.environment.items():
@@ -351,6 +353,12 @@ class Audit:
         self.fields = {"run_id": self.id, "version": VERSION, "project": project.name,
                        "operation": operation, "target": target, "mode": mode,
                        "operator": os.environ.get("USER", "unknown")}
+        parent = os.environ.get("CTRL_PARENT_RUN_ID")
+        if parent:
+            try:
+                self.fields['parent_run_id'] = str(uuid.UUID(parent))
+            except ValueError:
+                pass
 
     def write(self, event, **fields):
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -457,7 +465,7 @@ def execute(project, requested, args, options, target_name):
         require(target_name == "local" or target_name in project.targets, f"Unknown target: {target_name}")
         target = project.targets.get(target_name, {})
         require(c["execution"] != "local" or target_name == "local", f"{operation.name} only runs locally")
-        require(c["execution"] != "controller" or target_name != "local", f"{operation.name} requires --on <target>")
+        require(c["execution"] != "controller" or target_name != "local" or c.get("target_optional"), f"{operation.name} requires --on <target>")
         remote = target_name != "local" and c["execution"] == "target"
         effective_sha256 = digest(canonical({"contract": operation.contract_sha256, "target": target}))
         audit.fields.update(operation=operation.name, implementation=operation.implementation,
@@ -476,11 +484,11 @@ def execute(project, requested, args, options, target_name):
             env["CTRL_PARAM_" + key.upper()] = str(value).lower() if isinstance(value, bool) else str(value)
         cwd = target.get("cwd", "/tmp") if remote else str(project.base)
         env.update(CTRL_VERSION=VERSION, CTRL_PROJECT=project.name, CTRL_PROJECT_DIR=cwd,
-                   CTRL_OPERATION=operation.name, CTRL_TARGET=target_name,
+                   CTRL_OPERATION=operation.name, CTRL_TARGET=target_name, CTRL_RUN_ID=audit.id,
                    CTRL_REMOTE="1" if remote else "0", CTRL_YES="1" if options.yes else "0",
                    CTRL_BIN=str(ARCHIVE if PACKAGED else ROOT / "ctrl.sh"),
                    CTRL_CONFIG_FILE=str(project.path or ""))
-        if c["execution"] == "controller" and not options.dry_run:
+        if c["execution"] == "controller" and target_name != "local" and not options.dry_run:
             command = ssh_args(target, project.environ)
             env.update(CTRL_SSH_ARGS=canonical(command), CTRL_TARGET_CWD=target.get("cwd", "/tmp"))
         plan = {"operation": operation.name, "implementation": operation.implementation,
@@ -537,7 +545,7 @@ def execute(project, requested, args, options, target_name):
 
 def help_text(project, name=None, as_json=False, source=False):
     selected = bool(project and name and (name in project.entries or name in project.aliases))
-    require(not source or (name and name not in RESERVED and (selected or name not in {"scripts", "config", "migration", "security", "install", "agent", "examples"})), "--source requires an operation name")
+    require(not source or (name and name not in RESERVED and (selected or name not in {"scripts", "config", "migration", "security", "install", "agent", "examples", "copy"})), "--source requires an operation name")
     require(not (source and as_json), "Choose --source or --json")
     if not selected and name == "examples":
         catalog = json.loads(asset("examples/catalog.json"))
@@ -556,13 +564,13 @@ def help_text(project, name=None, as_json=False, source=False):
         require(not as_json, "Agent skill is Markdown; omit --json")
         print(asset("SKILL.md"))
         return
-    if not selected and name in {"scripts", "config", "migration", "security", "install"}:
+    if not selected and name in {"scripts", "config", "migration", "security", "install", "copy"}:
         require(not as_json, "Use ctrl help <operation> --json for a machine-readable contract")
         print(asset("docs/" + name + ".md"))
         return
     if name:
         if name in RESERVED:
-            print({"help": "ctrl help [operation|scripts|config|security|install|migration|agent|examples] [--json]\nctrl help --all lists supplied implementations.",
+            print({"help": "ctrl help [operation|scripts|config|security|install|migration|agent|examples|copy] [--json]\nctrl help --all lists supplied implementations.",
                    "run": "ctrl run <operation> [parameters] [--on target[,target]] [--dry-run] [--yes]\nctrl <operation> is the same runner. Use -- before literal operation arguments.",
                    "check": "ctrl check [operation [parameters]] [--on target[,target]] [--json]\nWithout an operation: validate the project and all configured contracts. No operation body runs.",
                    "upgrade": "ctrl upgrade [--yes]\nVerify and atomically replace a packaged installation using the latest GitHub release."}[name])
@@ -678,7 +686,7 @@ def main(argv=None):
     if command == "help" and len(tail) == 1 and tail[0] in RESERVED:
         help_text(None, tail[0], options.json, options.source)
         return 0
-    if command == "help" and tail and tail[0] in {"scripts", "config", "migration", "security", "install", "agent", "examples"}:
+    if command == "help" and tail and tail[0] in {"scripts", "config", "migration", "security", "install", "agent", "examples", "copy"}:
         require(len(tail) == 1, "Usage: ctrl help <topic>")
         # Enabled operations take precedence over documentation topic names.
         # Static docs must still work when yq/configuration is absent or broken.

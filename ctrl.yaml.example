@@ -7,6 +7,7 @@ operations:
   redeploy:
     uses: compose/redeploy
     aliases: [rd]
+  cp: host/copy
   ssh: host/ssh
 targets:
   prod:

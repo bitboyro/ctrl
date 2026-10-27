@@ -41,7 +41,8 @@ Errors before a project can be loaded cannot be recorded in its journal.
 Environment values and operation stdout/stderr are not recorded. Parameters marked
 secret are redacted. Other parameter values are recorded: do not put secrets in
 unmarked strings. Secret CLI arguments are visible in the original process argv;
-prefer env declarations. Script output may itself expose secrets; ctrl cannot
+prefer env declarations. Delegated operations include parent_run_id so copy relay legs can be traced to
+the original copy request. Script output may itself expose secrets; ctrl cannot
 sanitize arbitrary application output reliably.
 
 Interactive SSH is explicitly marked destructive and needs consent. Audit covers

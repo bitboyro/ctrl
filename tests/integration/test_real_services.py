@@ -110,7 +110,7 @@ RUN apk add --no-cache bash openssh rsync \\
  && chmod 755 /usr/local/bin/yq
 COPY authorized_keys /root/.ssh/authorized_keys
 RUN chmod 600 /root/.ssh/authorized_keys
-RUN printf '%s\\n' 'PermitRootLogin prohibit-password' 'PasswordAuthentication no' 'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' 'StrictModes yes' 'AllowUsers root' 'AllowTcpForwarding no' 'AllowAgentForwarding no' 'X11Forwarding no' 'UseDNS no' > /etc/ssh/sshd_config
+RUN printf '%s\\n' 'PermitRootLogin prohibit-password' 'PasswordAuthentication no' 'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' 'StrictModes yes' 'AllowUsers root' 'AllowTcpForwarding no' 'AllowAgentForwarding no' 'X11Forwarding no' 'UseDNS no' 'Subsystem sftp internal-sftp' > /etc/ssh/sshd_config
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 ''')
@@ -266,6 +266,52 @@ PYCODE''', tools=['python3'], env=['APP_TOKEN'])
         self.assert_ok(self.ctrl('check', 'probe', '--on', 'sandbox'))
         self.assertTrue(self.ssh_capture.exists(), 'Preflight did not use real SSH')
         self.assertNotEqual(run('docker', 'exec', self.container, 'test', '-e', self.remote + '/should-not-exist').returncode, 0)
+
+    def test_real_copy_upload_download_and_file_contents(self):
+        self.data['operations']['cp'] = 'host/copy'
+        self.write_config()
+        source = self.project / "secret 'sample'.bin"
+        contents = b'copy-test-secret\x00binary\n'
+        source.write_bytes(contents)
+        source.chmod(0o600)
+        remote = self.remote + "/file 'with spaces'.bin"
+        self.assert_ok(self.ctrl('cp', str(source), 'sandbox:' + remote, '--yes'))
+        received = self.project / 'download.bin'
+        self.assert_ok(self.ctrl('cp', 'sandbox:' + remote, str(received), '--yes'))
+        self.assertEqual(received.read_bytes(), contents)
+        journal = self.records()
+        self.assertNotIn('copy-test-secret', json.dumps(journal))
+        finished = [r for r in journal if r['event'] == 'finished']
+        self.assertEqual(len(finished), 4)
+        self.assertTrue(all(r['exit_code'] == 0 for r in finished))
+
+    def test_real_copy_target_relay_does_not_need_remote_to_remote_trust(self):
+        self.data['operations']['cp'] = 'host/copy'
+        self.data['targets']['other'] = dict(self.data['targets']['sandbox'])
+        self.write_config()
+        source = self.project / 'original.txt'
+        source.write_text('relay through the controller')
+        src = self.remote + '/original.txt'
+        dst = self.remote + '/relayed.txt'
+        self.assert_ok(self.ctrl('cp', str(source), 'sandbox:' + src, '--yes'))
+        self.assert_ok(self.ctrl('cp', 'sandbox:' + src, 'other:' + dst, '--yes'))
+        self.assertEqual(checked('docker', 'exec', self.container, 'cat', dst), source.read_text())
+        finished = [r for r in self.records() if r['event'] == 'finished']
+        self.assertEqual([r['target'] for r in finished[-3:]], ['sandbox', 'other', 'local'])
+        self.assertEqual(finished[-3]['parent_run_id'], finished[-1]['run_id'])
+        self.assertEqual(finished[-2]['parent_run_id'], finished[-1]['run_id'])
+
+    def test_real_copy_recursive_directory_requires_explicit_flag(self):
+        self.data['operations']['cp'] = 'host/copy'
+        self.write_config()
+        source = self.project / 'folder'
+        (source / 'nested').mkdir(parents=True)
+        (source / 'nested/data.txt').write_text('directory data')
+        remote = self.remote + '/received-folder'
+        self.assert_ok(self.ctrl('cp', str(source), 'sandbox:' + remote, '--recursive', '--yes'))
+        received = self.project / 'downloaded-folder'
+        self.assert_ok(self.ctrl('cp', 'sandbox:' + remote, str(received), '--recursive', '--yes'))
+        self.assertEqual((received / 'nested/data.txt').read_text(), 'directory data')
 
     def test_real_rsync_upload_and_explicit_delete_with_spaced_paths(self):
         # Run the Linux packaged controller inside the isolated fixture so this

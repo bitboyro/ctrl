@@ -52,7 +52,9 @@ script. Arbitrary caller stdin streaming is not part of contract v1.
 
 Optional fields: `tools` (executable names), `env` (required environment names),
 `timeout` (positive seconds, default 300), `parameters` (default empty), and
-`interactive` (boolean, default false; controller operations only).
+`interactive` (boolean, default false; controller operations only), and
+`target_optional` (boolean, default false; controller operations only). The latter
+lets an operation such as file copy run locally or delegate to explicit endpoints.
 Unknown fields are rejected. Local and remote prerequisites are checked before
 execution. `ctrl check <operation>` never executes the operation body.
 
@@ -113,7 +115,7 @@ the process group for noninteractive operations and records cancellation.
 
 ## Execution environment and remote behavior
 
-All executions receive CTRL_VERSION, CTRL_PROJECT, CTRL_OPERATION, CTRL_TARGET,
+All executions receive CTRL_VERSION, CTRL_PROJECT, CTRL_OPERATION, CTRL_TARGET, CTRL_RUN_ID,
 CTRL_PROJECT_DIR (working directory), CTRL_REMOTE (0/1), CTRL_YES (0/1), and
 CTRL_PARAM_* for supplied/defaulted parameters. Optional parameters with no default
 are absent. Boolean defaults are false; integers use decimal strings.

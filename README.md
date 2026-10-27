@@ -24,7 +24,7 @@ needed only by operations that use them. Operation tools are checked before use.
 migrated before replacing a working installation. Keep the previous executable
 for projects that have not migrated; see [migration](docs/migration.md).
 
-Download the [0.5.0 release package](https://github.com/bitboyro/ctrl/releases/tag/v0.5.0),
+Download the [0.5.1 release package](https://github.com/bitboyro/ctrl/releases/tag/v0.5.1),
 extract it, and run `./install.sh --from .` to verify and install its executable.
 
 From a source checkout:
@@ -75,6 +75,18 @@ backup --yes` creates both. Enable it explicitly in `operations`.
 `--version` prints the runner version. `ctrl help --all` lists available supplied
 implementations. Only operations enabled by the project appear in normal help;
 `init` is available to bootstrap an empty project.
+
+SSH and file transfer remain available as operations: bind `ssh: host/ssh`,
+`cp: host/copy`, and `sync: host/sync` as needed. Copy supports both directions:
+
+```bash
+ctrl cp ./file prod:/srv/app/file --yes
+ctrl cp prod:/var/log/app.log ./app.log --yes
+ctrl cp staging:/srv/report.csv prod:/srv/report.csv --yes
+```
+
+Use `--recursive` for directories. Copy uses literal paths and SFTP; use sync for
+rsync mirroring/exclusions. [File-copy contract](docs/copy.md).
 
 ## Contracts and audit
 

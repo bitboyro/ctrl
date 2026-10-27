@@ -15,6 +15,7 @@ operations:
   redeploy:
     uses: compose/redeploy
     aliases: [rd]
+  cp: host/copy
   backup:
     script: ./scripts/backup.sh
     environment:
@@ -69,7 +70,10 @@ fan-out are intentionally absent in v1.
 `execution: target` streams the script to Bash on the selected host; the remote
 working directory must already exist. Nothing is installed there. A local
 operation rejects remote selection. A controller operation executes locally but
-receives connection details for the selected remote target (SSH and sync).
+receives connection details for the selected remote target (SSH, copy, and sync).
+Controller contracts with target_optional: true can also execute a local dispatcher.
+File-copy endpoints such as prod:/path select targets explicitly; they do not
+create an implicit production default.
 
 ## Environment
 
