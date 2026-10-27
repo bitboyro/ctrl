@@ -1,5 +1,6 @@
 """Real localhost integration for example servers: no Docker or external network."""
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -76,9 +78,7 @@ class HttpLifecycleTests(unittest.TestCase):
             output = (self.base / 'server.log').read_text()
             if self.child.poll() is not None:
                 self.fail('Server exited before readiness:\n' + output)
-            # Do not probe an unbound ephemeral destination: on macOS a client
-            # can acquire that same source port and self-connect before bind.
-            # Both real apps announce only after their listen() has succeeded.
+            # Both apps announce readiness after bind; only then send requests.
             if announcement in output:
                 try:
                     response = self.request('/health')
@@ -115,6 +115,15 @@ class HttpLifecycleTests(unittest.TestCase):
         self.assertEqual(self.records()[-1]['outcome'], 'cancelled')
         with self.assertRaises(OSError):
             self.request('/health')
+
+    def test_loopback_python_server_does_not_require_reverse_dns(self):
+        spec = importlib.util.spec_from_file_location('sample_server', ROOT / 'examples/python-app/app/server.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with mock.patch('socket.getfqdn', side_effect=AssertionError('Reverse DNS is unavailable')):
+            with module.LocalHTTPServer(('127.0.0.1', 0), module.Handler) as server:
+                self.assertEqual(server.server_name, '127.0.0.1')
+                self.assertGreater(server.server_port, 0)
 
     def test_python_server_real_requests_and_cancellation(self):
         self.start('python-app')
