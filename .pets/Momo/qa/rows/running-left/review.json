@@ -1,0 +1,142 @@
+{
+  "ok": true,
+  "frames_root": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames",
+  "states": [
+    "running-left"
+  ],
+  "errors": [],
+  "warnings": [],
+  "rows": [
+    {
+      "state": "running-left",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": "components",
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 3227,
+          "bbox": [
+            58,
+            39,
+            134,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 1,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 2006,
+          "bbox": [
+            70,
+            35,
+            122,
+            159
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 2
+        },
+        {
+          "index": 2,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 3103,
+          "bbox": [
+            60,
+            39,
+            132,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 2081,
+          "bbox": [
+            70,
+            35,
+            122,
+            166
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6889,
+          "bbox": [
+            21,
+            35,
+            171,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 14
+        },
+        {
+          "index": 5,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8083,
+          "bbox": [
+            9,
+            35,
+            183,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 5
+        },
+        {
+          "index": 6,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6724,
+          "bbox": [
+            21,
+            35,
+            171,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 6
+        },
+        {
+          "index": 7,
+          "file": "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/running-left/frames/running-left/07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8414,
+          "bbox": [
+            5,
+            35,
+            187,
+            173
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 6
+        }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,9 @@
 one interface; projects choose the implementations.
 
 ```bash
-ctrl                          # operations available in this project
+ctrl                          # compact operation overview
+ctrl version                  # runner version (--version also works)
+ctrl help operations          # full project operation descriptions
 ctrl deploy --help            # implementation, effects, typed parameters
 ctrl help deploy --source      # exact selected Bash body
 ctrl check deploy api --on prod

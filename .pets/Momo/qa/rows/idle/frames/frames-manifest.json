@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "chroma_key": {
+    "hex": "#FF00FF",
+    "rgb": [
+      255,
+      0,
+      255
+    ],
+    "threshold": 180.0
+  },
+  "rows": [
+    {
+      "state": "idle",
+      "frames": [
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/00.png",
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/01.png",
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/02.png",
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/03.png",
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/04.png",
+        "/Users/romanbotnari/Development/bitboy.ro/ctrl/.pets/Momo/qa/rows/idle/frames/idle/05.png"
+      ],
+      "method": "components"
+    }
+  ]
+}

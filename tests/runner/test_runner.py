@@ -907,5 +907,46 @@ raise SystemExit(0 if any(line.split()[:2]==pub for line in lines) else 255)
         self.assertTrue(all(not Path(call['path']).exists() for call in calls))
         self.assertEqual(self.records()[-1]['exit_code'], 124)
 
+    def test_version_alias_works_without_configuration_or_tools(self):
+        self.config.write_text('not: [valid')
+        for packaged in [False,True]:
+            expected=self.run_ctrl('--version',packaged=packaged)
+            actual=self.run_ctrl('version',packaged=packaged)
+            self.assert_ok(actual)
+            self.assertEqual(actual.stdout,expected.stdout)
+        result=subprocess.run([sys.executable,str(PACKAGE),'version'],cwd=self.base,
+                              env=dict(self.env,PATH='/nonexistent'),capture_output=True,text=True)
+        self.assert_ok(result)
+        self.assertEqual(result.stdout,expected.stdout)
+
+    def test_large_project_help_is_compact_and_details_remain_available(self):
+        self.operation()
+        for i in range(24):
+            name='task'+str(i).zfill(2)
+            self.data['operations'][name]=dict(script='./scripts/hello.sh',aliases=['t'+str(i)])
+        self.write_config()
+        overview=self.run_ctrl('help',env=dict(self.env,COLUMNS='80'))
+        self.assert_ok(overview)
+        self.assertIn('ctrl version',overview.stdout)
+        self.assertIn('task23/t23',overview.stdout)
+        self.assertIn('Read\n',overview.stdout)
+        self.assertNotIn('Test operation',overview.stdout)
+        self.assertLess(len(overview.stdout.splitlines()),30)
+        self.assertTrue(all(len(line)<=80 for line in overview.stdout.splitlines()))
+        detailed=self.run_ctrl('help','operations')
+        self.assert_ok(detailed)
+        self.assertIn('task23 (t23)',detailed.stdout)
+        self.assertIn('Test operation',detailed.stdout)
+        info=self.run_ctrl('help','operations','--json')
+        self.assert_ok(info)
+        self.assertEqual(json.loads(info.stdout),json.loads(self.run_ctrl('help','--json').stdout))
+
+    def test_operations_help_topic_does_not_shadow_a_registered_operation(self):
+        self.operation(name='operations',body='echo project-operation')
+        result=self.run_ctrl('help','operations','--source')
+        self.assert_ok(result)
+        self.assertIn('echo project-operation',result.stdout)
+        self.assertNotIn('Project operations',result.stdout)
+
 if __name__ == '__main__':
     unittest.main()

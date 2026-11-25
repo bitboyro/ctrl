@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import textwrap
 import urllib.request
 import uuid
 import zipfile
@@ -612,6 +613,9 @@ def execute(project, requested, args, options, target_name):
 
 
 def help_text(project, name=None, as_json=False, source=False):
+    detailed = name == "operations" and not (project and (name in project.entries or name in project.aliases))
+    if detailed:
+        name = None
     selected = bool(project and name and (name in project.entries or name in project.aliases))
     require(not source or (name and name not in RESERVED and (selected or name not in {"scripts", "config", "migration", "security", "install", "agent", "examples", "copy"})), "--source requires an operation name")
     require(not (source and as_json), "Choose --source or --json")
@@ -638,7 +642,7 @@ def help_text(project, name=None, as_json=False, source=False):
         return
     if name:
         if name in RESERVED:
-            print({"help": "ctrl help [operation|scripts|config|security|install|migration|agent|examples|copy] [--json]\nctrl help --all lists supplied implementations.",
+            print({"help": "ctrl help [operation|scripts|config|security|install|migration|agent|examples|copy] [--json]\nctrl help operations lists project descriptions; ctrl help --all lists supplied implementations.",
                    "run": "ctrl run <operation> [parameters] [--on target[,target]] [--dry-run] [--yes]\nctrl <operation> is the same runner. Use -- before literal operation arguments.",
                    "check": "ctrl check [operation [parameters]] [--on target[,target]] [--json]\nWithout an operation: validate the project and all configured contracts. No operation body runs.",
                    "upgrade": "ctrl upgrade [--yes]\nVerify and atomically replace a packaged installation using the latest GitHub release."}[name])
@@ -682,11 +686,36 @@ def help_text(project, name=None, as_json=False, source=False):
         print(json.dumps({"version": VERSION, "core": sorted(RESERVED), "operations": rows,
                           "targets": sorted(project.targets) if project else []}, indent=2))
     else:
-        print(f"ctrl {VERSION} — discover, check, and run contracted operations\n\nCore: help  run  check  upgrade\n\nProject operations:")
-        for row in rows:
-            aliases = " (" + ", ".join(row["aliases"]) + ")" if row["aliases"] else ""
-            print(f"  {row['name'] + aliases:22} {row['description']} [{row['effects']}]")
-        print("\nctrl <operation> --help    selected implementation and typed parameters\nctrl help scripts         how to write an operation\nctrl help --all            supplied implementations\nctrl check                validate this project's contracts\nctrl --version")
+        width = max(40, min(88, shutil.get_terminal_size((80, 24)).columns))
+        print(f"ctrl {VERSION}" + (f"  ·  {project.name}" if project else ""))
+        if detailed:
+            print("\nProject operations\n")
+            for row in rows:
+                aliases = " (" + ", ".join(row["aliases"]) + ")" if row["aliases"] else ""
+                print("  " + row["name"] + aliases + "  [" + row["effects"] + "]")
+                print(textwrap.fill(row["description"], width=width, initial_indent="    ", subsequent_indent="    "))
+                print()
+            print("Details: ctrl help <operation>    Implementation: ctrl help <operation> --source")
+            return
+        print("\n  ctrl <operation> [arguments]   Run a project operation")
+        print("  ctrl check                     Validate project configuration")
+        print("  ctrl upgrade --yes             Update the installed runner")
+        print("  ctrl version                   Show version (--version also works)")
+        print("\nOperations")
+        for effects, label in [("read", "Read"), ("write", "Write"), ("destructive", "Destructive")]:
+            group = [row for row in rows if row["effects"] == effects]
+            if not group:
+                continue
+            print("\n  " + label)
+            names = [row["name"] + ("/" + "/".join(row["aliases"]) if row["aliases"] else "") for row in group]
+            print(textwrap.fill("  ".join(names), width=width, initial_indent="    ", subsequent_indent="    ", break_long_words=False, break_on_hyphens=False))
+        if project and project.targets:
+            print("\nTargets: " + ", ".join(sorted(project.targets)) + "  (select with --on)")
+        print("\n  ctrl help <operation>   Usage and parameters")
+        print("  ctrl help operations    Full descriptions for this project")
+        print("  ctrl help --all         Supplied implementations")
+        print("  ctrl help scripts       Write your own operation")
+        print("\nPreview: --dry-run    Confirm writes: --yes    Aliases: name/alias")
 
 
 def upgrade(yes):
@@ -716,7 +745,7 @@ def upgrade(yes):
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
-    if args == ["--version"]:
+    if args in (["--version"], ["version"]):
         print("ctrl " + VERSION)
         return 0
     # Runner flags are parsed once, identically for explicit run and shortcuts.
@@ -741,7 +770,7 @@ def main(argv=None):
     if not rest:
         rest = ["help"]
     command, tail = rest[0], rest[1:]
-    if command == "--version" and not tail:
+    if command in {"--version", "version"} and not tail:
         print("ctrl " + VERSION)
         return 0
     if command == "--help":

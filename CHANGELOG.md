@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- Accept `ctrl version` alongside `ctrl --version`, including inside broken or legacy projects.
+- Show a compact, grouped help overview; use `ctrl help operations` for full project descriptions.
+
 ## [0.5.1] - 2026-10-27
 
 First published operations-runner release; the 0.5.0 tag was blocked by CI and did not publish assets.

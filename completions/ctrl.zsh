@@ -22,7 +22,8 @@ _ctrl() {
 import json,sys
 x=json.load(sys.stdin)
 print("\n".join(x["core"]+[o["name"] for o in x["operations"]]+[a for o in x["operations"] for a in o["aliases"]]))' 2>/dev/null)}")
-    [[ "$command" != help ]] || candidates+=(scripts config security install migration agent examples copy --all)
+    [[ -n "$command" ]] || candidates+=(version)
+    [[ "$command" != help ]] || candidates+=(scripts config security install migration agent examples copy operations --all)
   else
     case "$command" in help|run|check) ;; *) operation="$command" ;; esac
     candidates=("${(@f)$(ctrl help "$operation" "${config[@]}" --json 2>/dev/null | python3 -c '
